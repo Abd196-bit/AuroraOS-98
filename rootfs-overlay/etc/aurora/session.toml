@@ -1,0 +1,20 @@
+[session]
+name = "AuroraOS 98"
+compositor = "aurora-compositor"
+shell = "aurora-shell"
+toolkit_profile = "serenity-classic-pixel"
+pixel_scale = 2
+
+[browser]
+name = "Firefox"
+launcher = "/usr/bin/aurora-open-firefox"
+wayland = true
+
+[runtime]
+kernel = "linux"
+init = "systemd"
+display = "wayland"
+audio = "pipewire"
+network = "NetworkManager"
+wifi_tool = "/usr/bin/aurora-wifi-connect"
+package_layers = ["native", "flatpak", "appimage"]

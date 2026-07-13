@@ -1,0 +1,7 @@
+[Unit]
+Description=AuroraOS User Session
+Requires=aurora-compositor.service aurora-shell.service
+After=graphical-session-pre.target
+
+[Install]
+WantedBy=default.target

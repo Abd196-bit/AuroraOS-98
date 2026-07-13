@@ -1,0 +1,19 @@
+[sources.native]
+enabled = true
+trust = "distribution"
+ui_label = "Native Packages"
+
+[sources.flatpak]
+enabled = true
+trust = "remote"
+ui_label = "Flatpak"
+
+[sources.appimage]
+enabled = true
+trust = "per-file"
+ui_label = "AppImage"
+
+[sources.optional_installers]
+enabled = true
+trust = "third-party"
+ui_label = "Optional Installers"

@@ -1,0 +1,56 @@
+[os]
+name = "AuroraOS"
+product = "linux-operating-system"
+identity = "pixelated-classic-desktop"
+base = ["linux-kernel", "wayland", "systemd", "pipewire", "networkmanager"]
+profile = "auroraos-98-serenity-framebuffer"
+
+[targets.raspberry_pi_4]
+arch = "aarch64"
+gpu = "vc4-v3d"
+boot = "u-boot-or-rpi-firmware"
+priority = "primary"
+
+[targets.raspberry_pi_5]
+arch = "aarch64"
+gpu = "v3d"
+boot = "rpi-firmware"
+priority = "primary"
+
+[targets.pc_x86_64]
+arch = "x86_64"
+gpu = "mesa-drm"
+boot = "systemd-boot"
+priority = "secondary"
+
+[performance]
+idle_ram_mb_max = 700
+boot_seconds_max = 10
+desktop_fps_target = 60
+
+[ui]
+rule = "everything-visible-is-pixelated"
+corners = "square"
+scaling = "integer-only"
+filter = "nearest-neighbor"
+theme = "aurora-classic"
+
+[references.serenityos]
+repo = "https://github.com/SerenityOS/serenity"
+local_path = "third_party/serenity"
+policy = "reference-and-license-compatible-adaptation-only"
+linux_boundary = "Aurora keeps Linux kernel, systemd, Wayland, PipeWire, NetworkManager, native packages, Flatpak, and AppImage"
+behavior_catalog = "src/aurora-serenity-bridge/behavior_catalog.toml"
+behavior_contract = "docs/aurora-behavior-port.md"
+
+[profiles.auroraos_98_serenity_framebuffer]
+name = "AuroraOS 98"
+base = "Linux"
+framebuffer_behavior = "SerenityOS-inspired"
+default_browser = "chromium"
+purpose = "QEMU/Raspberry Pi framebuffer shell profile with Serenity-style desktop behavior and Linux app compatibility."
+
+[components.task_manager]
+source = "src/aurora-task-manager"
+linux_backends = ["/proc", "cgroups", "systemd", "aurora-pi-hardwared"]
+reference = "third_party/serenity/Userland/Applications/SystemMonitor"

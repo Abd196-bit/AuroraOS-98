@@ -1,0 +1,23 @@
+[shell]
+computer = "system/computer-32.png"
+desktop = "system/desktop-32.png"
+explorer = "system/explorer-32.png"
+folder = "system/folder-32.png"
+documents = "system/documents-32.png"
+package_center = "system/package-center-32.png"
+control_panel = "system/control-panel-32.png"
+settings = "system/settings-32.png"
+terminal = "system/terminal-32.png"
+network = "system/network-16.png"
+disk = "system/disk-32.png"
+shutdown = "system/shutdown-32.png"
+run = "system/run-32.png"
+pi_tools = "system/pi-tools-32.png"
+
+[applications]
+text_editor = "system/text-editor-32.png"
+graphics = "system/graphics-32.png"
+audio = "system/audio-32.png"
+video = "system/video-32.png"
+search = "system/search-32.png"
+package = "system/package-32.png"

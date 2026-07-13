@@ -1,0 +1,29 @@
+[[installer]]
+id = "aseprite"
+name = "Aseprite"
+reason = "Commercial license; user-provided purchase or upstream install required."
+
+[[installer]]
+id = "unity-hub"
+name = "Unity Hub"
+reason = "Third-party account and license flow."
+
+[[installer]]
+id = "unreal-engine"
+name = "Unreal Engine"
+reason = "Large third-party download and account requirements."
+
+[[installer]]
+id = "steam"
+name = "Steam"
+reason = "Third-party storefront and license agreement."
+
+[[installer]]
+id = "discord"
+name = "Discord"
+reason = "Third-party binary distribution."
+
+[[installer]]
+id = "spotify"
+name = "Spotify"
+reason = "Third-party binary distribution and account service."

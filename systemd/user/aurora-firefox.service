@@ -1,0 +1,14 @@
+[Unit]
+Description=Firefox Browser
+PartOf=aurora-session.target
+After=aurora-compositor.service aurora-shell.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/aurora-open-firefox
+Restart=no
+Environment=GDK_BACKEND=wayland
+Environment=MOZ_ENABLE_WAYLAND=1
+
+[Install]
+WantedBy=aurora-session.target

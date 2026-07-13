@@ -1,0 +1,50 @@
+[source]
+repo = "https://github.com/SerenityOS/serenity"
+local_path = "third_party/serenity"
+inspected_commit = "34127407"
+license = "BSD-2-Clause"
+purpose = "reference and license-compatible adaptation only"
+
+[framebuffer_base]
+product_name = "AuroraOS 98"
+profile = "serenity-inspired-framebuffer"
+default_browser = "chromium"
+strategy = "Use SerenityOS desktop behavior as the framebuffer/userland profile while keeping Linux as the kernel and service base."
+
+[linux_boundary]
+kernel = "Linux"
+init = "systemd"
+display = "Wayland DRM/KMS"
+audio = "PipeWire"
+network = "NetworkManager"
+packages = ["native", "Flatpak", "AppImage"]
+
+[[components]]
+serenity = "WindowServer"
+aurora = "aurora-compositor"
+strategy = "reimplement on Wayland/wlroots"
+
+[[components]]
+serenity = "LibGUI"
+aurora = "Aurora pixel toolkit"
+strategy = "adapt behavior and sizing rules; do not depend on Serenity syscalls"
+
+[[components]]
+serenity = "FileManager"
+aurora = "aurora-explorer"
+strategy = "reimplement with Linux filesystem APIs and Aurora namespace views"
+
+[[components]]
+serenity = "Ports"
+aurora = "aurora-package-center"
+strategy = "map to native packages, Flatpak, AppImage, optional installers"
+
+[[components]]
+serenity = "SystemMonitor"
+aurora = "aurora-task-manager"
+strategy = "read Linux /proc, cgroups, and systemd state"
+
+[[components]]
+serenity = "Settings applets"
+aurora = "aurora-settings and aurora-control-panel"
+strategy = "use Linux service backends with classic pixel UI"

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Wi-Fi Connection
+Comment=Connect to wireless networks using NetworkManager
+Exec=aurora-wifi-connect status
+Terminal=true
+Icon=network
+Categories=Settings;Network;AuroraOS98;

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Chromium
+Comment=Browse the web
+Exec=/usr/bin/aurora-open-chromium
+Icon=chromium
+Terminal=false
+Categories=Network;WebBrowser;
+StartupWMClass=AuroraChromium

@@ -1,0 +1,64 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  cat <<'EOF'
+AuroraOS 98 Wi-Fi Connection
+
+Usage:
+  aurora-wifi-connect list
+  aurora-wifi-connect connect "SSID"
+  aurora-wifi-connect connect "SSID" "PASSWORD"
+  aurora-wifi-connect disconnect
+  aurora-wifi-connect status
+
+Aurora uses NetworkManager underneath. This tool is the classic Aurora UI/CLI
+front end; it does not replace Linux networking.
+EOF
+}
+
+need_nmcli() {
+  if ! command -v nmcli >/dev/null 2>&1; then
+    echo "NetworkManager nmcli is not installed in this image."
+    echo "Install/enable NetworkManager in the full rootfs profile."
+    exit 1
+  fi
+}
+
+cmd="${1:-status}"
+
+case "$cmd" in
+  list|scan)
+    need_nmcli
+    nmcli radio wifi on >/dev/null 2>&1 || true
+    nmcli --fields IN-USE,SSID,SIGNAL,SECURITY dev wifi list
+    ;;
+  connect)
+    need_nmcli
+    ssid="${2:-}"
+    password="${3:-}"
+    if [ -z "$ssid" ]; then
+      echo "Missing SSID."
+      usage
+      exit 2
+    fi
+    nmcli radio wifi on
+    if [ -n "$password" ]; then
+      nmcli dev wifi connect "$ssid" password "$password"
+    else
+      nmcli dev wifi connect "$ssid"
+    fi
+    ;;
+  disconnect)
+    need_nmcli
+    nmcli device disconnect wlan0 2>/dev/null || nmcli networking off
+    ;;
+  status)
+    need_nmcli
+    nmcli --fields DEVICE,TYPE,STATE,CONNECTION device status
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

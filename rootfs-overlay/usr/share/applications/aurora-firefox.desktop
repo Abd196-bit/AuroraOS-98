@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Firefox
+Comment=Browse the web
+Exec=/usr/bin/aurora-open-firefox
+Icon=firefox
+Terminal=false
+Categories=Network;WebBrowser;
+StartupWMClass=firefox

@@ -1,0 +1,41 @@
+{
+  "fonts": {
+    "uiRegular": {
+      "file": "../MSW98UI-Regular copy.ttf",
+      "purpose": "Default shell, menus, dialogs, explorer, taskbar, package center"
+    },
+    "uiBold": {
+      "file": "../MSW98UI-Bold copy.ttf",
+      "purpose": "Title bars, selected items, group headings, critical dialogs"
+    }
+  },
+  "sounds": {
+    "click": {
+      "file": "../click.wav",
+      "purpose": "Beveled button activation, menu item activation, taskbar interaction"
+    }
+  },
+  "icons": {
+    "directory": "icons",
+    "format": "png",
+    "style": "user-provided win95-winxp icon pack for prototype, plus Aurora-generated fallback pixel art",
+    "map": "icons/icon_map.toml",
+    "items": [
+      "system/computer-32.png",
+      "system/explorer-32.png",
+      "system/package-center-32.png",
+      "system/control-panel-32.png",
+      "system/settings-32.png",
+      "system/terminal-32.png",
+      "system/pi-tools-32.png"
+    ]
+  },
+  "scaling": {
+    "mode": "integer-only",
+    "filtering": "nearest-neighbor",
+    "allowedScales": [1, 2, 3, 4]
+  },
+  "copyrightPolicy": {
+    "rule": "Use the supplied assets and original Aurora artwork only. Do not copy Microsoft icons, sounds, wallpapers, logos, or system bitmaps."
+  }
+}

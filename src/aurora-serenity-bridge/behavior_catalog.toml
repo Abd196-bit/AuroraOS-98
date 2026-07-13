@@ -1,0 +1,66 @@
+[window]
+serenity_sources = [
+  "Userland/Services/WindowServer/WindowManager.cpp",
+  "Userland/Services/WindowServer/WindowFrame.cpp",
+  "Userland/Services/WindowServer/MenuManager.cpp",
+]
+aurora_targets = ["aurora-compositor", "aurora-fb-shell"]
+linux_backends = ["Wayland", "DRM/KMS", "libinput"]
+status = "prototype-in-framebuffer-shell"
+
+[widgets]
+serenity_sources = [
+  "Userland/Libraries/LibGUI/Button.cpp",
+  "Userland/Libraries/LibGUI/Menu.cpp",
+  "Userland/Libraries/LibGUI/TabWidget.cpp",
+  "Userland/Libraries/LibGUI/Dialog.cpp",
+  "Userland/Libraries/LibGUI/IconView.cpp",
+]
+aurora_targets = ["Aurora pixel toolkit", "aurora-fb-shell"]
+linux_backends = ["framebuffer now", "Wayland later"]
+status = "prototype-hit-tested"
+
+[shell]
+serenity_sources = [
+  "Userland/Applications/FileManager/DesktopWidget.cpp",
+  "Userland/Services/WindowServer/AppletManager.cpp",
+]
+aurora_targets = ["aurora-shell", "aurora-fb-shell"]
+linux_backends = ["systemd user session", "libinput", "Wayland"]
+status = "prototype-start-menu-and-desktop"
+
+[explorer]
+serenity_sources = ["Userland/Applications/FileManager"]
+aurora_targets = ["aurora-explorer"]
+linux_backends = ["POSIX filesystem", "udisks2-or-direct-mounts", "NetworkManager"]
+status = "specified"
+
+[package_center]
+serenity_sources = ["Ports"]
+aurora_targets = ["aurora-package-center"]
+linux_backends = ["native packages", "Flatpak", "AppImage"]
+status = "specified"
+
+[settings]
+serenity_sources = ["Userland/Applications/Settings", "Userland/Applications/*Settings"]
+aurora_targets = ["aurora-settings", "aurora-control-panel"]
+linux_backends = ["systemd", "NetworkManager", "PipeWire", "DRM/KMS", "Pi hardware daemon"]
+status = "specified"
+
+[terminal]
+serenity_sources = ["Userland/Applications/Terminal"]
+aurora_targets = ["aurora-terminal"]
+linux_backends = ["PTY", "standard shells"]
+status = "specified"
+
+[task_manager]
+serenity_sources = ["Userland/Applications/SystemMonitor"]
+aurora_targets = ["aurora-task-manager"]
+linux_backends = ["/proc", "cgroups", "systemd"]
+status = "specified"
+
+[run_help]
+serenity_sources = ["Userland/Applications/Run", "Userland/Applications/Help"]
+aurora_targets = ["aurora-shell", "aurora-help"]
+linux_backends = ["PATH lookup", "local docs"]
+status = "prototype-dialogs"

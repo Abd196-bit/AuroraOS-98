@@ -1,0 +1,69 @@
+[browser]
+packages = ["firefox", "chromium"]
+default = "firefox"
+profile_role = "Serenity-style framebuffer browser base"
+launcher = "/usr/bin/aurora-open-firefox"
+desktop_entry = "aurora-firefox.desktop"
+
+[serenity_framebuffer_base]
+enabled = true
+name = "AuroraOS 98 Serenity Framebuffer Base"
+description = "Linux base with Serenity-inspired framebuffer shell behavior and Firefox as the default browser."
+reference = "third_party/serenity"
+keeps_linux = ["linux-kernel", "systemd", "wayland", "pipewire", "networkmanager", "native-packages", "flatpak", "appimage"]
+core_apps = [
+  "firefox",
+  "chromium",
+  "aurora-explorer",
+  "aurora-terminal",
+  "aurora-package-center",
+  "aurora-settings",
+  "aurora-control-panel",
+  "aurora-task-manager"
+]
+
+[office]
+packages = ["libreoffice"]
+
+[graphics]
+packages = ["gimp", "krita", "inkscape"]
+
+[three_d]
+packages = ["blender"]
+
+[programming]
+packages = ["vscodium", "git", "gcc", "clang", "cmake"]
+
+[audio]
+packages = ["audacity", "lmms"]
+
+[video]
+packages = ["vlc", "kdenlive"]
+
+[game_engine]
+packages = ["godot"]
+
+[aurora]
+packages = [
+  "aurora-compositor",
+  "aurora-shell",
+  "aurora-explorer",
+  "aurora-package-center",
+  "aurora-settings",
+  "aurora-control-panel",
+  "aurora-wifi-connect",
+  "aurora-login-manager",
+  "aurora-installer",
+  "aurora-update-manager",
+  "aurora-notification-center",
+  "aurora-theme-engine",
+  "aurora-task-manager",
+  "aurora-terminal",
+  "aurora-pi-tools"
+]
+
+[network]
+backend = "NetworkManager"
+packages = ["networkmanager", "network-manager-applet", "wpa_supplicant"]
+tools = ["aurora-wifi-connect"]
+features = ["scan", "connect", "disconnect", "saved-profiles", "status"]

@@ -1,0 +1,18 @@
+[Unit]
+Description=AuroraOS Raspberry Pi Hardware Service
+Documentation=file:/usr/share/doc/aurora/raspberry-pi.md
+After=multi-user.target
+ConditionPathExists=/proc/device-tree/model
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/aurora/aurora-pi-hardwared
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
