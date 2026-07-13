@@ -12,7 +12,8 @@ AuroraOS 98 is an experimental Linux operating-system environment for x86-64 PCs
 - Xorg with the Aurora JWM desktop session
 - 1440x900 desktop with large-interface scaling
 - Start menu, taskbar, desktop icons, four workspaces, and keyboard launch shortcuts
-- large white `whiteglass` Xcursor theme
+- supplied Aurora pixel cursor theme built from `assets/cursors/aurora-pointer.png`
+- supplied MS W98 UI pixel font across the desktop, controls, and application chrome
 - real Firefox ESR with QEMU NAT networking
 - real VSCodium, packaged for Alpine/musl
 - PCManFM graphical file explorer
@@ -22,6 +23,12 @@ AuroraOS 98 is an experimental Linux operating-system environment for x86-64 PCs
 - Python 3 and pip
 - NetworkManager tools, Wi-Fi controls for real hardware, and QEMU Ethernet networking
 - ALSA/QEMU audio plumbing and Aurora interface sounds
+
+## Real Firefox
+
+AuroraOS bundles Firefox ESR with working QEMU NAT networking. This capture shows the browser loading a live external site inside the guest OS.
+
+![Firefox ESR running inside AuroraOS 98](docs/screenshots/firefox.png)
 
 ## Real VSCodium
 

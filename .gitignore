@@ -2,6 +2,7 @@
 build/
 third_party/
 win95-winxp_icons-master/
+Cursors_v2/
 *.img
 *.iso
 *.cpio

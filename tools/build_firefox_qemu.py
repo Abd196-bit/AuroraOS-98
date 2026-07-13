@@ -254,6 +254,49 @@ def write_app_surface() -> None:
     shutil.copy2(ROOT / "IMG_0249.jpg", media_dir / "wallpaper.jpg")
     shutil.copy2(ROOT / "click.wav", sound_dir / "click.wav")
 
+    font_dir = ROOTFS / "usr" / "share" / "fonts" / "aurora"
+    font_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / "MSW98UI-Regular copy.ttf", font_dir / "MSW98UI-Regular.ttf")
+    shutil.copy2(ROOT / "MSW98UI-Bold copy.ttf", font_dir / "MSW98UI-Bold.ttf")
+    write_file(
+        "/etc/fonts/conf.d/99-aurora-fonts.conf",
+        """<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <alias>
+    <family>sans-serif</family>
+    <prefer><family>MS W98 UI</family></prefer>
+  </alias>
+  <alias>
+    <family>system-ui</family>
+    <prefer><family>MS W98 UI</family></prefer>
+  </alias>
+</fontconfig>
+""",
+    )
+
+    cursor_source = ROOT / "assets" / "cursors" / "aurora-pointer.png"
+    cursor_theme = ROOTFS / "usr" / "share" / "icons" / "AuroraPixel"
+    cursor_dir = cursor_theme / "cursors"
+    cursor_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(cursor_source, cursor_theme / "Arrow1.png")
+    (cursor_theme / "index.theme").write_text(
+        "[Icon Theme]\nName=Aurora Pixel Cursor\nInherits=whiteglass\n"
+    )
+    cursor_config = cursor_theme / "cursor.conf"
+    cursor_config.write_text("48 1 1 Arrow1.png\n")
+    xcursorgen = shutil.which("xcursorgen") or "/opt/X11/bin/xcursorgen"
+    subprocess.run(
+        [xcursorgen, str(cursor_config), str(cursor_dir / "left_ptr")],
+        cwd=cursor_theme,
+        check=True,
+    )
+    for cursor_alias in ("default", "arrow", "top_left_arrow"):
+        alias = cursor_dir / cursor_alias
+        if alias.exists() or alias.is_symlink():
+            alias.unlink()
+        alias.symlink_to("left_ptr")
+
     write_file(
         "/usr/bin/aurora-click",
         """#!/bin/sh
@@ -355,7 +398,7 @@ exec {launcher_command}
 <title>AuroraOS 98 Package Center</title>
 <style>
 * {{ box-sizing: border-box; }}
-html, body {{ margin: 0; min-height: 100%; background: #111 url("wallpaper.jpg") center/cover fixed no-repeat; color: #f3f3f3; font: 20px "DejaVu Sans", sans-serif; }}
+html, body {{ margin: 0; min-height: 100%; background: #111 url("wallpaper.jpg") center/cover fixed no-repeat; color: #f3f3f3; font: 20px "MS W98 UI", sans-serif; }}
 body {{ padding: 10px; }}
 button, input {{ font: inherit; }}
 .window {{ border: 1px solid #333; background: #202020; box-shadow: 0 0 0 1px #000; }}
@@ -894,7 +937,7 @@ echo
 cat <<'HTML'
 <!doctype html><html><head><meta charset="utf-8"><title>Aurora Settings</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#111 url("/wallpaper.jpg") center/cover fixed no-repeat;color:#f3f3f3;font:21px "DejaVu Sans",Arial,sans-serif}.window{width:1220px;max-width:calc(100vw - 24px);margin:12px auto;background:#1f1f24;border:1px solid #353542;box-shadow:0 12px 34px #000}.title{height:58px;background:#0078d7;color:#fff;font-size:26px;font-weight:700;padding:13px 20px}.nav{display:flex;gap:10px;padding:14px 18px;background:#18181d;border-bottom:1px solid #333}.nav button{font:inherit;color:#eee;background:#2b2b33;border:1px solid #454553;padding:12px 16px}.nav button.active{background:#0078d7;border-color:#3195e6}.main{padding:20px;min-height:720px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.section{background:#292933;border:1px solid #3c3c48;padding:18px;margin-bottom:16px}.wide{grid-column:1/-1}.row{display:grid;grid-template-columns:230px 1fr;gap:16px;margin-bottom:12px;align-items:center}.value{background:#17171b;border:1px solid #3c3c48;padding:12px}.btn,input{font:inherit}.btn{padding:12px 16px;background:#333742;color:#f3f3f3;border:1px solid #555b6a}.btn:hover{background:#404755;border-color:#3a96dd}.btn:active{background:#005a9e}input{width:100%;padding:12px;border:1px solid #555;background:#111;color:#fff}table{width:100%;border-collapse:collapse;background:#18181d}th,td{border:1px solid #3c3c48;padding:12px;text-align:left}th{background:#0078d7;color:#fff}.note{background:#15151a;border:1px solid #3c3c48;padding:14px}.msg{background:#111;border:1px solid #0078d7;padding:12px;margin-bottom:14px}.actions{display:flex;gap:12px;flex-wrap:wrap}.storage{height:44px;display:grid;grid-template-columns:26% 17% 1% 1% 34% 14% 7%;overflow:hidden;border:1px solid #424250}.storage span:nth-child(1){background:#ff4343}.storage span:nth-child(2){background:#ff9b2e}.storage span:nth-child(3){background:#ffd400}.storage span:nth-child(4){background:#30d158}.storage span:nth-child(5){background:#8a8a8a}.storage span:nth-child(6){background:#aaa}.storage span:nth-child(7){background:#555}.desktops{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.desktop{height:110px;background:#111;border:2px solid #444;display:flex;align-items:center;justify-content:center}.desktop.active{border-color:#0078d7;background:#08345a}h1{font-size:40px;margin:0 0 18px}h2{font-size:28px;margin:0 0 14px}
+*{box-sizing:border-box}body{margin:0;background:#111 url("/wallpaper.jpg") center/cover fixed no-repeat;color:#f3f3f3;font:21px "MS W98 UI",Arial,sans-serif}.window{width:1220px;max-width:calc(100vw - 24px);margin:12px auto;background:#1f1f24;border:1px solid #353542;box-shadow:0 12px 34px #000}.title{height:58px;background:#0078d7;color:#fff;font-size:26px;font-weight:700;padding:13px 20px}.nav{display:flex;gap:10px;padding:14px 18px;background:#18181d;border-bottom:1px solid #333}.nav button{font:inherit;color:#eee;background:#2b2b33;border:1px solid #454553;padding:12px 16px}.nav button.active{background:#0078d7;border-color:#3195e6}.main{padding:20px;min-height:720px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.section{background:#292933;border:1px solid #3c3c48;padding:18px;margin-bottom:16px}.wide{grid-column:1/-1}.row{display:grid;grid-template-columns:230px 1fr;gap:16px;margin-bottom:12px;align-items:center}.value{background:#17171b;border:1px solid #3c3c48;padding:12px}.btn,input{font:inherit}.btn{padding:12px 16px;background:#333742;color:#f3f3f3;border:1px solid #555b6a}.btn:hover{background:#404755;border-color:#3a96dd}.btn:active{background:#005a9e}input{width:100%;padding:12px;border:1px solid #555;background:#111;color:#fff}table{width:100%;border-collapse:collapse;background:#18181d}th,td{border:1px solid #3c3c48;padding:12px;text-align:left}th{background:#0078d7;color:#fff}.note{background:#15151a;border:1px solid #3c3c48;padding:14px}.msg{background:#111;border:1px solid #0078d7;padding:12px;margin-bottom:14px}.actions{display:flex;gap:12px;flex-wrap:wrap}.storage{height:44px;display:grid;grid-template-columns:26% 17% 1% 1% 34% 14% 7%;overflow:hidden;border:1px solid #424250}.storage span:nth-child(1){background:#ff4343}.storage span:nth-child(2){background:#ff9b2e}.storage span:nth-child(3){background:#ffd400}.storage span:nth-child(4){background:#30d158}.storage span:nth-child(5){background:#8a8a8a}.storage span:nth-child(6){background:#aaa}.storage span:nth-child(7){background:#555}.desktops{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.desktop{height:110px;background:#111;border:2px solid #444;display:flex;align-items:center;justify-content:center}.desktop.active{border-color:#0078d7;background:#08345a}h1{font-size:40px;margin:0 0 18px}h2{font-size:28px;margin:0 0 14px}
 </style><script>function clickSound(){const a=document.getElementById('click-sound');if(a){a.currentTime=0;a.play().catch(()=>{});}}window.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('button').forEach(b=>b.addEventListener('click',clickSound)));</script></head><body><audio id="click-sound" src="/click.wav" preload="auto"></audio><div class="window"><div class="title">Aurora Settings</div><div class="nav"><button class="active">System</button><button>Network</button><button>Sound</button><button>Appearance</button><button>Task View</button><button>Apps</button></div><div class="main"><h1>System</h1>
 HTML
 if [ -n "$message" ]; then
@@ -1037,7 +1080,7 @@ if [ ! -f /tmp/firefox-home/.config/gtk-3.0/settings.ini ]; then
 [Settings]
 gtk-theme-name=Raleigh
 gtk-icon-theme-name=hicolor
-gtk-font-name=DejaVu Sans 17
+gtk-font-name=MS W98 UI 17
 gtk-application-prefer-dark-theme=1
 gtk-enable-animations=0
 EOF
@@ -1057,7 +1100,7 @@ if command -v pcmanfm >/dev/null 2>&1; then
   pcmanfm "$root" >>/tmp/aurora-pcmanfm.log 2>&1 && exit 0
 fi
 
-exec xterm -geometry 104x34+86+76 -title "AuroraOS File Explorer" -bg '#111111' -fg '#f3f3f3' -fa 'DejaVu Sans' -fs 14 -e sh -c 'cd "$1" 2>/dev/null || cd /tmp/firefox-home; echo "PCManFM did not stay open; showing fallback file list."; echo; ls -lah; echo; echo "Press Enter to close."; read line' sh "$root"
+exec xterm -geometry 104x34+86+76 -title "AuroraOS File Explorer" -bg '#111111' -fg '#f3f3f3' -fa 'MS W98 UI' -fs 14 -e sh -c 'cd "$1" 2>/dev/null || cd /tmp/firefox-home; echo "PCManFM did not stay open; showing fallback file list."; echo; ls -lah; echo; echo "Press Enter to close."; read line' sh "$root"
 """,
         0o755,
     )
@@ -1076,7 +1119,7 @@ if command -v idesk >/dev/null 2>&1; then
   mkdir -p /tmp/firefox-home/.idesktop
   cat >/tmp/firefox-home/.ideskrc <<'EOF'
 table Config
-  FontName: DejaVu Sans
+  FontName: MS W98 UI
   FontSize: 16
   FontColor: #ffffff
   ToolTip.FontSize: 13
@@ -1632,7 +1675,7 @@ def read(path, fallback="Unavailable"):
 def button(parent, text, command, width=None):
     widget = tk.Button(parent, text=text, command=command, bg="#343434", fg=TEXT,
                        activebackground=BLUE, activeforeground="white", bd=1,
-                       relief="solid", padx=16, pady=10, font=("DejaVu Sans", 14),
+                       relief="solid", padx=16, pady=10, font=("MS W98 UI", 14),
                        cursor="hand2")
     if width:
         widget.configure(width=width)
@@ -1645,7 +1688,7 @@ class AuroraApp(tk.Tk):
         self.geometry(size)
         self.minsize(920, 620)
         self.configure(bg=BG)
-        self.option_add("*Font", ("DejaVu Sans", 14))
+        self.option_add("*Font", ("MS W98 UI", 14))
         self.option_add("*Foreground", TEXT)
         self.option_add("*Background", BG)
         self.bind_all("<Button-1>", lambda _e: subprocess.Popen(
@@ -1654,15 +1697,15 @@ class AuroraApp(tk.Tk):
 
     def heading(self, parent, title, subtitle=""):
         tk.Label(parent, text=title, bg=BG, fg=TEXT,
-                 font=("DejaVu Sans", 27, "bold"), anchor="w").pack(fill="x", pady=(0, 4))
+                 font=("MS W98 UI", 27, "bold"), anchor="w").pack(fill="x", pady=(0, 4))
         if subtitle:
             tk.Label(parent, text=subtitle, bg=BG, fg=MUTED,
-                     font=("DejaVu Sans", 14), anchor="w").pack(fill="x", pady=(0, 20))
+                     font=("MS W98 UI", 14), anchor="w").pack(fill="x", pady=(0, 20))
 
     def card(self, parent, title):
         frame = tk.Frame(parent, bg=PANEL, bd=1, relief="solid", padx=18, pady=16)
         tk.Label(frame, text=title, bg=PANEL, fg=TEXT,
-                 font=("DejaVu Sans", 18, "bold"), anchor="w").pack(fill="x", pady=(0, 12))
+                 font=("MS W98 UI", 18, "bold"), anchor="w").pack(fill="x", pady=(0, 12))
         return frame
 
 class Settings(AuroraApp):
@@ -1676,7 +1719,7 @@ class Settings(AuroraApp):
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
         tk.Label(sidebar, text="Aurora Settings", bg="#151515", fg=TEXT,
-                 font=("DejaVu Sans", 19, "bold"), anchor="w").pack(fill="x", padx=8, pady=(4, 22))
+                 font=("MS W98 UI", 19, "bold"), anchor="w").pack(fill="x", padx=8, pady=(4, 22))
         self.content = tk.Frame(shell, bg=BG, padx=30, pady=26)
         self.content.pack(side="left", fill="both", expand=True)
         for name in self.pages:
@@ -1776,7 +1819,7 @@ class Settings(AuroraApp):
             preview.grid(row=(index-1)//2, column=(index-1)%2, padx=10, pady=10, sticky="nsew")
             preview.grid_propagate(False)
             tk.Label(preview, text=f"Desktop {index}", bg=PANEL2, fg=TEXT,
-                     font=("DejaVu Sans", 20, "bold")).pack(expand=True)
+                     font=("MS W98 UI", 20, "bold")).pack(expand=True)
             button(preview, "Switch", lambda i=index: run(["jwm", "-desktop", str(i)])).pack(pady=14)
         grid.grid_columnconfigure((0, 1), weight=1)
         grid.grid_rowconfigure((0, 1), weight=1)
@@ -1803,7 +1846,7 @@ class PackageCenter(AuroraApp):
         for row, (name, description, state, cmd) in enumerate(self.apps):
             card = tk.Frame(listing, bg=PANEL, bd=1, relief="solid", padx=16, pady=12)
             card.grid(row=row, column=0, sticky="ew", pady=5)
-            tk.Label(card, text=name, bg=PANEL, fg=TEXT, font=("DejaVu Sans", 17, "bold"), anchor="w").grid(row=0, column=0, sticky="w")
+            tk.Label(card, text=name, bg=PANEL, fg=TEXT, font=("MS W98 UI", 17, "bold"), anchor="w").grid(row=0, column=0, sticky="w")
             tk.Label(card, text=description, bg=PANEL, fg=MUTED, anchor="w").grid(row=1, column=0, sticky="w")
             button(card, "Open" if state == "Installed" else state, lambda c=cmd: run(c), width=10).grid(row=0, column=1, rowspan=2, padx=8)
             card.grid_columnconfigure(0, weight=1)
@@ -1814,7 +1857,7 @@ class PackageCenter(AuroraApp):
         dialog.title("Install Linux package")
         dialog.geometry("560x220")
         dialog.configure(bg=PANEL)
-        tk.Label(dialog, text="Alpine package name", bg=PANEL, fg=TEXT, font=("DejaVu Sans", 18, "bold")).pack(anchor="w", padx=22, pady=(22, 10))
+        tk.Label(dialog, text="Alpine package name", bg=PANEL, fg=TEXT, font=("MS W98 UI", 18, "bold")).pack(anchor="w", padx=22, pady=(22, 10))
         entry = tk.Entry(dialog, bg="#111", fg=TEXT, insertbackground=TEXT)
         entry.pack(fill="x", padx=22, ipady=8)
         button(dialog, "Install", lambda: run(["/usr/bin/aurora-package-install-custom", entry.get()])).pack(anchor="e", padx=22, pady=18)
@@ -1832,7 +1875,7 @@ class TaskView(AuroraApp):
             preview = tk.Frame(grid, bg=PANEL2, bd=2, relief="solid", width=500, height=210)
             preview.grid(row=(index-1)//2, column=(index-1)%2, padx=10, pady=10, sticky="nsew")
             preview.grid_propagate(False)
-            tk.Label(preview, text=f"Desktop {index}", bg=PANEL2, fg=TEXT, font=("DejaVu Sans", 22, "bold")).pack(pady=(40, 8))
+            tk.Label(preview, text=f"Desktop {index}", bg=PANEL2, fg=TEXT, font=("MS W98 UI", 22, "bold")).pack(pady=(40, 8))
             tk.Label(preview, text=label, bg=PANEL2, fg=MUTED).pack()
             button(preview, "Switch desktop", lambda i=index: (run(["jwm", "-desktop", str(i)]), self.destroy())).pack(pady=20)
         grid.grid_columnconfigure((0, 1), weight=1)
@@ -1901,6 +1944,8 @@ exec /usr/bin/aurora-control-center {mode}
             return "/usr/bin/aurora-launch-settings"
         if name == "Package Center":
             return "/usr/bin/aurora-launch-package-center"
+        if name == "Firefox":
+            return "/usr/bin/aurora-launch-firefox"
         if name == "Run Windows EXE":
             return with_click("/usr/bin/aurora-run-exe")
         if name in {"File Explorer", "Explorer"}:
@@ -1985,7 +2030,7 @@ exec /usr/bin/aurora-control-center {mode}
 
   <Desktops width="4" height="1" />
   <WindowStyle>
-    <Font>DejaVu Sans-18</Font>
+    <Font>MS W98 UI-18</Font>
     <Width>2</Width>
     <Height>46</Height>
     <Active>
@@ -2000,19 +2045,19 @@ exec /usr/bin/aurora-control-center {mode}
     </Inactive>
   </WindowStyle>
   <TaskListStyle>
-    <Font>DejaVu Sans-18</Font>
+    <Font>MS W98 UI-18</Font>
     <ActiveForeground>#ffffff</ActiveForeground>
     <ActiveBackground>#0b4ba5</ActiveBackground>
     <Foreground>#f3f3f3</Foreground>
     <Background>#1f1f1f</Background>
   </TaskListStyle>
   <TrayStyle>
-    <Font>DejaVu Sans-18</Font>
+    <Font>MS W98 UI-18</Font>
     <Background>#1f1f1f</Background>
     <Foreground>#ffffff</Foreground>
   </TrayStyle>
   <MenuStyle>
-    <Font>DejaVu Sans-18</Font>
+    <Font>MS W98 UI-18</Font>
     <Foreground>#f3f3f3</Foreground>
     <Background>#202020</Background>
     <ActiveForeground>#ffffff</ActiveForeground>
@@ -2174,9 +2219,9 @@ export MOZ_DISABLE_CONTENT_SANDBOX=1
 export GDK_DPI_SCALE=1.25
 export GDK_SCALE=1
 export QT_SCALE_FACTOR=1.25
-export XCURSOR_THEME=whiteglass
+export XCURSOR_THEME=AuroraPixel
 export XCURSOR_SIZE=48
-printf 'Xft.dpi: 144\nXcursor.size: 48\nXcursor.theme: whiteglass\n' >/tmp/firefox-home/.Xresources
+printf 'Xft.dpi: 144\nXcursor.size: 48\nXcursor.theme: AuroraPixel\n' >/tmp/firefox-home/.Xresources
 xrdb -merge /tmp/firefox-home/.Xresources 2>/dev/null || true
 feh --bg-fill /usr/share/aurora/wallpaper.jpg >/tmp/aurora-xinit-wallpaper.log 2>&1 || true
 exec jwm -f /etc/jwm/aurora.jwmrc
@@ -2200,14 +2245,14 @@ chmod 700 /run/user/0
 chmod 700 /tmp/firefox-home /tmp/firefox-home/profile
 cat >/tmp/firefox-home/.gtkrc-2.0 <<'EOF'
 gtk-theme-name="AuroraDark"
-gtk-font-name="DejaVu Sans 14"
+gtk-font-name="MS W98 UI 14"
 gtk-icon-theme-name="Adwaita"
 EOF
 mkdir -p /tmp/firefox-home/.config/gtk-3.0
 cat >/tmp/firefox-home/.config/gtk-3.0/settings.ini <<'EOF'
 [Settings]
 gtk-theme-name=Adwaita-dark
-gtk-font-name=DejaVu Sans 14
+gtk-font-name=MS W98 UI 14
 gtk-icon-theme-name=Adwaita
 EOF
 cp /usr/share/aurora/mimeapps.list /tmp/firefox-home/.local/share/applications/mimeapps.list 2>/dev/null || true
@@ -2282,7 +2327,7 @@ export HOME=/tmp/firefox-home
 export DISPLAY=:0
 export XDG_RUNTIME_DIR=/run/user/0
 export XCURSOR_SIZE=48
-export XCURSOR_THEME=whiteglass
+export XCURSOR_THEME=AuroraPixel
 export GDK_DPI_SCALE=1.25
 export GDK_SCALE=1
 export QT_SCALE_FACTOR=1.25
@@ -2307,7 +2352,7 @@ if command -v dbus-launch >/dev/null 2>&1; then
     [ -s /tmp/dbus-session.env ] && . /tmp/dbus-session.env
 fi
 xsetroot -display :0 -solid '#111111' >/dev/console 2>&1 || true
-printf 'Xft.dpi: 144\nXcursor.size: 48\nXcursor.theme: whiteglass\n' >/tmp/firefox-home/.Xresources
+printf 'Xft.dpi: 144\nXcursor.size: 48\nXcursor.theme: AuroraPixel\n' >/tmp/firefox-home/.Xresources
 xrdb -display :0 -merge /tmp/firefox-home/.Xresources >/dev/console 2>&1 || true
 xsetroot -display :0 -cursor_name left_ptr >/dev/console 2>&1 || true
 xmodmap -display :0 -e "clear mod4" -e "keycode 133 = Control_L NoSymbol Control_L" -e "keycode 134 = Control_R NoSymbol Control_R" -e "add Control = Control_L Control_R" >/var/log/xmodmap.log 2>&1 || true
