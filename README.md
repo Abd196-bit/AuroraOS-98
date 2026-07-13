@@ -2,7 +2,7 @@
 
 AuroraOS 98 is an experimental Linux operating-system environment for x86-64 PCs and Raspberry Pi hardware. It combines a classic desktop workflow with current Linux application compatibility: real windows, a Start menu, desktop icons, multiple workspaces, a graphical control center, and standard Linux software underneath.
 
-> **Project status:** active development preview. The x86-64 QEMU image is runnable today. Raspberry Pi images, the production Wayland compositor, persistent installation, and update infrastructure are still under development.
+> **Project status:** active development preview. Hardware-accelerated ARM64 and x86-64 QEMU images are runnable today. Raspberry Pi images, the production Wayland compositor, persistent installation, and update infrastructure are still under development.
 
 ![AuroraOS 98 desktop](docs/screenshots/desktop.png)
 
@@ -20,6 +20,8 @@ AuroraOS 98 is an experimental Linux operating-system environment for x86-64 PCs
 - native graphical Aurora Settings, Package Center, Task View, and System Monitor
 - Wine launcher for Windows executables
 - handlers for `.deb`, AppImage, shell scripts, and Linux executables
+- graphical ZIP, 7-Zip, RAR, tar, gzip, bzip2, and xz archive handling
+- Alpine `.apk` installation from the file explorer
 - Python 3 and pip
 - NetworkManager tools, Wi-Fi controls for real hardware, and QEMU Ethernet networking
 - ALSA/QEMU audio plumbing and Aurora interface sounds
@@ -46,11 +48,49 @@ Settings is a native graphical application with System, Network & Wi-Fi, Sound, 
 
 ## Run it
 
+### Fast start on Apple Silicon
+
+The ARM64 image uses Apple's Hypervisor Framework (HVF). This is the recommended
+way to run AuroraOS on an M1, M2, M3, or M4 Mac.
+
+If the image has already been built, run:
+
+```sh
+make run-fast-qemu
+```
+
+You can also double-click `run-aurora-qemu.command` in Finder. It automatically
+selects the fast ARM64 VM on Apple Silicon and the x86-64 VM on Intel hosts.
+
+For a clean ARM64 build, run these once:
+
+```sh
+brew install qemu lz4 libarchive
+make firefox-qemu-arm64
+make run-fast-qemu
+```
+
+Do not use `make run-firefox-qemu` on Apple Silicon unless you specifically need
+the x86-64 guest. QEMU must translate every x86 instruction in software on an ARM
+Mac, which is much slower than the HVF-backed ARM64 image.
+
+### x86-64 hosts and compatibility testing
+
+Build and run the x86-64 image with:
+
+```sh
+make firefox-qemu
+make run-firefox-qemu
+```
+
+The x86-64 image is also the appropriate preview for testing Wine and x86 Windows
+executables. Wine in the ARM64 preview does not provide x86 CPU translation.
+
 ### Requirements
 
 - macOS or Linux host
 - Python 3
-- QEMU x86-64
+- QEMU (ARM64 and/or x86-64 system emulator)
 - `cpio`, `lz4`, `bsdtar`, and `make`
 - at least 8 GB of free disk space for a clean build
 - at least 6 GB of RAM assigned to the VM
@@ -61,26 +101,23 @@ On macOS with Homebrew:
 brew install qemu lz4 libarchive
 ```
 
-Build the Linux kernel/initramfs prerequisites and the graphical image:
-
-```sh
-make linux-qemu
-python3 tools/build_firefox_qemu.py --build
-```
-
-Run AuroraOS 98:
-
-```sh
-make run-firefox-qemu
-```
-
-The first clean build downloads roughly 620 MB of Alpine packages. The generated image is written to:
+The first clean build downloads the Alpine package set. Generated images are written to:
 
 ```text
 build/firefox-qemu/aurora-firefox-initramfs.cpio.lz4
+build/firefox-qemu-arm64/aurora-firefox-initramfs.cpio.lz4
 ```
 
 Build products are intentionally excluded from Git because the current image is close to 1 GB.
+
+### VM controls
+
+- Click inside the QEMU window to use the mouse and keyboard.
+- Press `Control+Option+G` on macOS to release the mouse from QEMU.
+- Press `F7` for Firefox, `F8` for VSCodium, and `F9` for Settings.
+- Open archives by double-clicking them in Aurora Explorer.
+- Downloaded AppImages, `.apk` files, scripts, and executables can be opened from Aurora Explorer.
+- Shut down from the Start menu before closing QEMU.
 
 ## Architecture
 
@@ -122,6 +159,7 @@ Every feature must improve at least one of usability, performance, compatibility
 ## Known limitations
 
 - The QEMU preview runs from RAM; changes are not persistent after shutdown.
+- Packages installed while the preview is running are lost when it reboots.
 - QEMU exposes Ethernet NAT, not the Mac's physical Wi-Fi radio.
 - Unity Hub is proprietary and is represented by an official installer flow rather than redistributed in the base image.
 - Raspberry Pi 4/5 boot images are not release-ready.

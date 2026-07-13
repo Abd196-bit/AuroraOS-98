@@ -3,4 +3,11 @@ set -e
 
 cd "$(dirname "$0")"
 
-exec make run-firefox-qemu
+case "$(uname -m)" in
+  arm64|aarch64)
+    exec make run-fast-qemu
+    ;;
+  *)
+    exec make run-firefox-qemu
+    ;;
+esac

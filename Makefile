@@ -4,8 +4,10 @@ ROOTFS_DIR := $(BUILD_DIR)/rootfs
 AURORA_QEMU_WIDTH ?= 1440
 AURORA_QEMU_HEIGHT ?= 900
 AURORA_QEMU_REFRESH ?= 60
+AURORA_QEMU_CPUS ?= 4
+AURORA_QEMU_ACCEL ?= tcg,thread=multi
 
-.PHONY: all check icons provided-icons system-icons assets native rootfs qemu-progress run-qemu-progress qemu-gui run-qemu-gui qemu-icon-gui run-qemu-icon-gui linux-qemu run-linux-qemu firefox-qemu run-firefox-qemu open-linux-qemu serenity-reference-check serenity-behavior-check chromium-runtime-check chromium-rootfs-check full-chromium-image run-full-chromium-qemu run-shell pi4-image pi5-image x86_64-chromium-image clean aurora-fb-shell
+.PHONY: all check icons provided-icons system-icons assets native rootfs qemu-progress run-qemu-progress qemu-gui run-qemu-gui qemu-icon-gui run-qemu-icon-gui linux-qemu run-linux-qemu firefox-qemu run-firefox-qemu firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-linux-qemu serenity-reference-check serenity-behavior-check chromium-runtime-check chromium-rootfs-check full-chromium-image run-full-chromium-qemu run-shell pi4-image pi5-image x86_64-chromium-image clean aurora-fb-shell
 
 all: check native rootfs
 
@@ -102,6 +104,9 @@ linux-qemu: qemu-icon-gui
 firefox-qemu: linux-qemu
 	python3 tools/build_firefox_qemu.py --build
 
+firefox-qemu-arm64:
+	python3 tools/build_arm64_qemu.py --build
+
 serenity-reference-check:
 	@test -d third_party/serenity/.git
 	@test -f src/aurora-serenity-bridge/component_map.toml
@@ -138,6 +143,8 @@ run-linux-qemu: linux-qemu
 
 run-firefox-qemu:
 	qemu-system-x86_64 -m 6144M \
+		-accel $(AURORA_QEMU_ACCEL) \
+		-smp $(AURORA_QEMU_CPUS) \
 		-kernel build/linux-base/iso/boot/vmlinuz-virt \
 		-initrd build/firefox-qemu/aurora-firefox-initramfs.cpio.lz4 \
 		-append "console=tty0 init=/init quiet video=Virtual-1:$(AURORA_QEMU_WIDTH)x$(AURORA_QEMU_HEIGHT)@$(AURORA_QEMU_REFRESH)" \
@@ -151,6 +158,28 @@ run-firefox-qemu:
 		-display cocoa \
 		-monitor none \
 		-serial stdio
+
+run-firefox-qemu-arm64:
+	qemu-system-aarch64 -m 6144M \
+		-machine virt,accel=hvf \
+		-cpu host \
+		-smp $(AURORA_QEMU_CPUS) \
+		-kernel build/firefox-qemu-arm64/vmlinuz-virt \
+		-initrd build/firefox-qemu-arm64/aurora-firefox-initramfs.cpio.lz4 \
+		-append "console=tty0 init=/init quiet" \
+		-device virtio-gpu-pci \
+		-device qemu-xhci,id=xhci \
+		-device usb-tablet,bus=xhci.0 \
+		-device usb-kbd,bus=xhci.0 \
+		-audiodev coreaudio,id=aud0 \
+		-device ES1370,audiodev=aud0 \
+		-netdev user,id=net0 \
+		-device virtio-net-pci,netdev=net0 \
+		-display cocoa \
+		-monitor none \
+		-serial none
+
+run-fast-qemu: run-firefox-qemu-arm64
 
 open-linux-qemu:
 	open "$(CURDIR)/run-aurora-qemu.command"

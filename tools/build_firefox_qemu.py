@@ -20,16 +20,18 @@ APK_DIR = BASE / "apks"
 ROOTFS = BASE / "rootfs"
 OUT = BASE / "aurora-firefox-initramfs.cpio.lz4"
 MODULES_SRC = ROOT / "build" / "linux-base" / "initramfs-root" / "lib" / "modules"
-VSCODIUM_FLAC_COMPAT_URL = "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/libflac-1.4.3-r1.apk"
+TARGET_ARCH = "x86_64"
+VSCODIUM_FLAC_COMPAT_URL = f"https://dl-cdn.alpinelinux.org/alpine/v3.22/main/{TARGET_ARCH}/libflac-1.4.3-r1.apk"
 REPOS = {
-    "main": "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64",
-    "community": "https://dl-cdn.alpinelinux.org/alpine/edge/community/x86_64",
-    "testing": "https://dl-cdn.alpinelinux.org/alpine/edge/testing/x86_64",
+    "main": f"https://dl-cdn.alpinelinux.org/alpine/edge/main/{TARGET_ARCH}",
+    "community": f"https://dl-cdn.alpinelinux.org/alpine/edge/community/{TARGET_ARCH}",
+    "testing": f"https://dl-cdn.alpinelinux.org/alpine/edge/testing/{TARGET_ARCH}",
 }
 
 WANTED = [
     "alpine-base",
     "alsa-utils",
+    "7zip",
     "dbus",
     "dbus-x11",
     "feh",
@@ -50,6 +52,9 @@ WANTED = [
     "python3",
     "vscodium",
     "wine",
+    "unzip",
+    "xarchiver",
+    "zip",
     "iw",
     "idesk",
     "xdg-utils",
@@ -72,6 +77,7 @@ DEFAULT_APPS = [
     ("Programming", "VSCodium", "aurora-code", "Real VSCodium editor installed in this QEMU image"),
     ("Game Dev", "Unity Hub Installer", "aurora-unity-hub", "Official Unity Hub installer flow"),
     ("Aurora", "Explorer", "aurora-explorer", "File manager"),
+    ("Aurora", "Archive Manager", "aurora-archive-manager", "ZIP, 7z, RAR, and tar archive manager"),
     ("Aurora", "Settings", "aurora-settings", "Unified settings app"),
     ("Aurora", "Package Center", "aurora-package-center", "Installer and app registry"),
     ("Aurora", "Task View", "aurora-task-view", "Workspace overview"),
@@ -191,6 +197,41 @@ def reset_rootfs() -> None:
 def extract_packages(paths: list[Path]) -> None:
     for path in paths:
         run(["bsdtar", "-xf", str(path), "-C", str(ROOTFS)])
+
+
+def write_apk_database(packages: list[dict]) -> None:
+    """Record manually extracted APKs so runtime apk transactions are valid."""
+    database = ROOTFS / "lib" / "apk" / "db"
+    database.mkdir(parents=True, exist_ok=True)
+    field_order = ("C", "P", "V", "A", "S", "I", "T", "U", "L", "o", "m", "t", "c", "D", "p", "i", "k", "r", "q")
+    records = []
+    for package in sorted(packages, key=lambda item: item["P"]):
+        records.append("\n".join(f"{field}:{package[field]}" for field in field_order if package.get(field)))
+    (database / "installed").write_text("\n\n".join(records) + "\n")
+    (database / "triggers").touch()
+    world = ROOTFS / "etc" / "apk" / "world"
+    world.parent.mkdir(parents=True, exist_ok=True)
+    world.write_text("\n".join(sorted(set(WANTED))) + "\n")
+
+
+def register_vscodium_flac_compat() -> None:
+    installed = ROOTFS / "lib" / "apk" / "db" / "installed"
+    if not installed.exists():
+        return
+    text = installed.read_text()
+    if "P:aurora-libflac12-compat\n" in text:
+        return
+    record = """P:aurora-libflac12-compat
+V:1.4.3-r1
+A:{TARGET_ARCH}
+T:Aurora compatibility library for VSCodium Electron
+U:https://auroraos.dev/
+L:BSD-3-Clause AND GPL-2.0-or-later
+o:aurora-libflac12-compat
+D:so:libc.musl-{TARGET_ARCH}.so.1 so:libogg.so.0
+p:so:libFLAC.so.12=12.1.0
+""".format(TARGET_ARCH=TARGET_ARCH)
+    installed.write_text(text.rstrip() + "\n\n" + record)
 
 
 def install_vscodium_flac_compat() -> None:
@@ -325,6 +366,7 @@ exec "$@"
         "package-center": "/usr/bin/aurora-package-center",
         "terminal": "xterm",
         "firefox": "/usr/bin/aurora-firefox",
+        "archive-manager": "xarchiver",
     }
     for launcher_name, launcher_command in launchers.items():
         write_file(
@@ -547,7 +589,7 @@ network_up() {
 
 apk_ready() {
   mkdir -p /lib/apk/db /var/cache/apk /etc/apk
-  touch /lib/apk/db/installed /lib/apk/db/world
+  touch /lib/apk/db/installed /etc/apk/world
   if ! grep -q "dl-cdn.alpinelinux.org/alpine/edge/main" /etc/apk/repositories 2>/dev/null; then
     printf "https://dl-cdn.alpinelinux.org/alpine/edge/main\\nhttps://dl-cdn.alpinelinux.org/alpine/edge/community\\n" >/etc/apk/repositories
   fi
@@ -577,15 +619,15 @@ install_pkg_terminal() {
     fi
     printf "nameserver 10.0.2.3\\nnameserver 1.1.1.1\\n" >/etc/resolv.conf
     mkdir -p /lib/apk/db /var/cache/apk /etc/apk
-    touch /lib/apk/db/installed /lib/apk/db/world
+    touch /lib/apk/db/installed /etc/apk/world
     if ! grep -q "dl-cdn.alpinelinux.org/alpine/edge/main" /etc/apk/repositories 2>/dev/null; then
       printf "https://dl-cdn.alpinelinux.org/alpine/edge/main\\nhttps://dl-cdn.alpinelinux.org/alpine/edge/community\\n" >/etc/apk/repositories
     fi
     echo "Updating package index..."
-    apk --initdb update
+    apk update
     echo
     echo "Installing package..."
-    apk --initdb add $pkg
+    apk add "$pkg"
     echo
     echo "Done. Press Enter to close."
     read line
@@ -633,12 +675,12 @@ exec xterm -geometry 112x32+100+90 -title "Aurora Package Center - Installing" -
   udhcpc -i eth0 -s /usr/share/udhcpc/default.script -q -t 8 -n 2>/dev/null || true
   printf "nameserver 10.0.2.3\\nnameserver 1.1.1.1\\n" >/etc/resolv.conf
   mkdir -p /lib/apk/db /var/cache/apk /etc/apk
-  touch /lib/apk/db/installed /lib/apk/db/world
+  touch /lib/apk/db/installed /etc/apk/world
   printf "https://dl-cdn.alpinelinux.org/alpine/edge/main\\nhttps://dl-cdn.alpinelinux.org/alpine/edge/community\\n" >/etc/apk/repositories
   clear
   echo "Installing custom APK package: $pkg"
   echo
-  apk --initdb update && apk --initdb add "$pkg"
+  apk update && apk add "$pkg"
   echo
   echo "Press Enter to close."
   read line
@@ -1166,6 +1208,7 @@ EOF
   make_link code "VSCodium" text-editor-48.png 180 320 /usr/bin/aurora-code
   make_link settings "Settings" settings-48.png 180 450 /usr/bin/aurora-settings
   make_link packages "Package Center" package-center-48.png 180 580 /usr/bin/aurora-package-center
+  make_link archives "Archive Manager" package-48.png 420 580 /usr/bin/aurora-launch-archive-manager
   make_link terminal "Terminal" terminal-48.png 430 60 /usr/bin/aurora-terminal
   make_link taskview "Task View" taskbar-48.png 430 190 /usr/bin/aurora-task-view
   exec idesk
@@ -1290,6 +1333,12 @@ exec /usr/bin/aurora-code "$@"
 file="$1"
 [ -n "$file" ] || exit 0
 case "$file" in
+  *.zip|*.ZIP|*.7z|*.7Z|*.rar|*.RAR|*.tar|*.tgz|*.tar.gz|*.tar.xz|*.tar.bz2)
+    exec /usr/bin/aurora-open-archive "$file"
+    ;;
+  *.apk|*.APK)
+    exec /usr/bin/aurora-install-apk-file "$file"
+    ;;
   *.exe|*.EXE|*.msi|*.MSI)
     exec /usr/bin/aurora-run-exe-file "$file"
     ;;
@@ -1320,6 +1369,43 @@ exec xdg-open "$file"
         0o755,
     )
     write_file(
+        "/usr/bin/aurora-open-archive",
+        """#!/bin/sh
+archive="$1"
+[ -f "$archive" ] || exit 1
+if command -v xarchiver >/dev/null 2>&1; then
+  exec xarchiver "$archive"
+fi
+xmessage -center -title "Archive Manager" "Archive support is unavailable in this image." 2>/dev/null || true
+""",
+        0o755,
+    )
+    write_file(
+        "/usr/bin/aurora-install-apk-file",
+        """#!/bin/sh
+package="$1"
+[ -f "$package" ] || exit 1
+xmessage -center -buttons "Install:1,Cancel:0" -title "Install Alpine Package" "Install this native AuroraOS package?
+
+$package" 2>/dev/null
+[ "$?" = 1 ] || exit 0
+exec xterm -geometry 112x32+100+90 -title "Aurora Package Installer" -e sh -c '
+  echo "Aurora native package installer"
+  echo "==============================="
+  echo
+  apk add --allow-untrusted "$1"
+  status=$?
+  echo
+  [ "$status" -eq 0 ] && echo "Installation complete." || echo "Installation failed with status $status."
+  echo "This RAM preview resets installed apps after reboot."
+  echo
+  echo "Press Enter to close."
+  read line
+' sh "$package"
+""",
+        0o755,
+    )
+    write_file(
         "/usr/bin/aurora-run-exe-file",
         """#!/bin/sh
 exe="$1"
@@ -1346,7 +1432,18 @@ xmessage -center -buttons "Run:1,Cancel:0" -title "Run AppImage" "Run this AppIm
 
 $app" 2>/dev/null
 [ "$?" = 1 ] || exit 0
-exec xterm -geometry 100x30+100+90 -title "Run AppImage" -e sh -c '"$1"; echo; echo "Press Enter to close."; read line' sh "$app"
+exec xterm -geometry 100x30+100+90 -title "Run AppImage" -e sh -c '
+  "$1"
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    echo
+    echo "Direct launch failed; retrying without FUSE..."
+    APPIMAGE_EXTRACT_AND_RUN=1 "$1"
+  fi
+  echo
+  echo "Press Enter to close."
+  read line
+' sh "$app"
 """,
         0o755,
     )
@@ -1517,6 +1614,32 @@ MimeType=application/vnd.debian.binary-package;application/x-deb;
 """,
     )
     write_file(
+        "/usr/share/applications/aurora-archive-manager.desktop",
+        """[Desktop Entry]
+Type=Application
+Name=Aurora Archive Manager
+Exec=/usr/bin/aurora-open-archive %f
+Icon=package-x-generic
+Terminal=false
+NoDisplay=false
+MimeType=application/zip;application/x-7z-compressed;application/x-rar;application/vnd.rar;application/x-tar;application/gzip;application/x-gzip;application/x-xz;application/x-bzip2;
+Categories=Utility;Archiving;AuroraOS98;
+""",
+    )
+    write_file(
+        "/usr/share/applications/aurora-install-apk.desktop",
+        """[Desktop Entry]
+Type=Application
+Name=Install Native Package
+Exec=/usr/bin/aurora-install-apk-file %f
+Icon=system-software-install
+Terminal=false
+NoDisplay=false
+MimeType=application/vnd.alpine.apk;application/x-alpine-package;
+Categories=System;PackageManager;AuroraOS98;
+""",
+    )
+    write_file(
         "/usr/share/aurora/mimeapps.list",
         """[Default Applications]
 application/x-ms-dos-executable=aurora-run-exe-file.desktop
@@ -1529,6 +1652,17 @@ application/x-deb=aurora-run-deb.desktop
 application/x-executable=aurora-open-downloaded-file.desktop
 application/x-shellscript=aurora-open-downloaded-file.desktop
 text/x-shellscript=aurora-open-downloaded-file.desktop
+application/zip=aurora-archive-manager.desktop
+application/x-7z-compressed=aurora-archive-manager.desktop
+application/x-rar=aurora-archive-manager.desktop
+application/vnd.rar=aurora-archive-manager.desktop
+application/x-tar=aurora-archive-manager.desktop
+application/gzip=aurora-archive-manager.desktop
+application/x-gzip=aurora-archive-manager.desktop
+application/x-xz=aurora-archive-manager.desktop
+application/x-bzip2=aurora-archive-manager.desktop
+application/vnd.alpine.apk=aurora-install-apk.desktop
+application/x-alpine-package=aurora-install-apk.desktop
 
 [Added Associations]
 application/octet-stream=aurora-open-downloaded-file.desktop;aurora-run-exe-file.desktop;
@@ -1537,6 +1671,17 @@ application/x-msdownload=aurora-run-exe-file.desktop;aurora-open-downloaded-file
 application/vnd.microsoft.portable-executable=aurora-run-exe-file.desktop;aurora-open-downloaded-file.desktop;
 application/vnd.debian.binary-package=aurora-run-deb.desktop;aurora-open-downloaded-file.desktop;
 application/x-deb=aurora-run-deb.desktop;aurora-open-downloaded-file.desktop;
+application/zip=aurora-archive-manager.desktop;
+application/x-7z-compressed=aurora-archive-manager.desktop;
+application/x-rar=aurora-archive-manager.desktop;
+application/vnd.rar=aurora-archive-manager.desktop;
+application/x-tar=aurora-archive-manager.desktop;
+application/gzip=aurora-archive-manager.desktop;
+application/x-gzip=aurora-archive-manager.desktop;
+application/x-xz=aurora-archive-manager.desktop;
+application/x-bzip2=aurora-archive-manager.desktop;
+application/vnd.alpine.apk=aurora-install-apk.desktop;
+application/x-alpine-package=aurora-install-apk.desktop;
 """,
     )
     write_file(
@@ -1545,19 +1690,35 @@ application/x-deb=aurora-run-deb.desktop;aurora-open-downloaded-file.desktop;
 user_pref("browser.download.dir", "/tmp/firefox-home/Downloads");
 user_pref("browser.download.useDownloadDir", true);
 user_pref("browser.download.alwaysOpenPanel", false);
-user_pref("browser.helperApps.neverAsk.saveToDisk", "application/x-ms-dos-executable,application/x-msdownload,application/vnd.microsoft.portable-executable,application/vnd.appimage,application/vnd.debian.binary-package,application/x-deb,application/octet-stream,application/x-executable,application/x-sh");
+user_pref("browser.helperApps.neverAsk.saveToDisk", "application/x-ms-dos-executable,application/x-msdownload,application/vnd.microsoft.portable-executable,application/vnd.appimage,application/vnd.debian.binary-package,application/x-deb,application/vnd.alpine.apk,application/x-alpine-package,application/zip,application/x-7z-compressed,application/octet-stream,application/x-executable,application/x-sh");
 user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("browser.startup.homepage_override.mstone", "ignore");
 user_pref("browser.startup.page", 0);
+user_pref("browser.startup.homepage", "about:blank");
+user_pref("browser.startup.firstrunSkipsHomepage", true);
+user_pref("startup.homepage_welcome_url", "");
+user_pref("startup.homepage_welcome_url.additional", "");
+user_pref("browser.aboutwelcome.enabled", false);
+user_pref("browser.newtabpage.enabled", false);
+user_pref("browser.newtabpage.activity-stream.feeds.telemetry", false);
+user_pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
+user_pref("browser.newtabpage.activity-stream.showSponsored", false);
+user_pref("browser.newtabpage.activity-stream.showSponsoredTopSites", false);
 user_pref("browser.sessionstore.resume_from_crash", false);
 user_pref("browser.tabs.warnOnClose", false);
 user_pref("datareporting.healthreport.uploadEnabled", false);
+user_pref("datareporting.policy.dataSubmissionEnabled", false);
 user_pref("toolkit.telemetry.enabled", false);
 user_pref("toolkit.telemetry.unified", false);
+user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);
 user_pref("app.update.enabled", false);
 user_pref("extensions.update.enabled", false);
 user_pref("signon.rememberSignons", false);
 user_pref("media.autoplay.default", 0);
+user_pref("network.prefetch-next", false);
+user_pref("network.dns.disablePrefetch", true);
+user_pref("dom.ipc.processCount", 2);
+user_pref("ui.prefersReducedMotion", 1);
 """,
     )
     write_file(
@@ -1946,6 +2107,8 @@ exec /usr/bin/aurora-control-center {mode}
             return "/usr/bin/aurora-launch-package-center"
         if name == "Firefox":
             return "/usr/bin/aurora-launch-firefox"
+        if name == "Archive Manager":
+            return "/usr/bin/aurora-launch-archive-manager"
         if name == "Run Windows EXE":
             return with_click("/usr/bin/aurora-run-exe")
         if name in {"File Explorer", "Explorer"}:
@@ -2067,6 +2230,8 @@ exec /usr/bin/aurora-control-center {mode}
   <FocusModel>click</FocusModel>
   <Key key="F8">exec:/usr/bin/aurora-launch-code</Key>
   <Key key="F9">exec:/usr/bin/aurora-launch-settings</Key>
+  <Key key="F7">exec:/usr/bin/aurora-launch-firefox</Key>
+  <Key key="F6">exec:/usr/bin/aurora-launch-archive-manager</Key>
   <ButtonClose>X</ButtonClose>
   <ButtonMax>□</ButtonMax>
   <ButtonMin>_</ButtonMin>
@@ -2138,10 +2303,13 @@ def force_busybox_applets() -> None:
         link.symlink_to("busybox")
 
 
-def configure_rootfs() -> None:
+def configure_rootfs(packages: list[dict] | None = None) -> None:
     install_vscodium_flac_compat()
     force_busybox_applets()
     normalize_kernel_modules(ROOTFS / "lib" / "modules")
+    if packages:
+        write_apk_database(packages)
+    register_vscodium_flac_compat()
     write_app_surface()
     write_file(
         "/etc/apk/repositories",
@@ -2193,18 +2361,18 @@ static unsigned char aurora_cursor_bits[] = {
     write_file(
         "/etc/X11/xorg.conf",
         """Section "Device"
-    Identifier "Framebuffer"
-    Driver "fbdev"
-    Option "fbdev" "/dev/fb0"
+    Identifier "AuroraGPU"
+    Driver "modesetting"
+    Option "AccelMethod" "glamor"
 EndSection
 
 Section "Screen"
     Identifier "Screen0"
-    Device "Framebuffer"
+    Device "AuroraGPU"
     DefaultDepth 24
     SubSection "Display"
         Depth 24
-        Modes "1280x800" "1366x768" "1024x768" "1920x1080" "2560x1440" "3840x2160"
+        Modes "1440x900" "1280x800" "1366x768" "1024x768" "1920x1080" "2560x1440" "3840x2160"
     EndSubSection
 EndSection
 """,
@@ -2241,6 +2409,9 @@ mount -t tmpfs tmpfs /dev/shm 2>/dev/null || true
 mount -t tmpfs tmpfs /run 2>/dev/null || true
 mount -t tmpfs tmpfs /tmp 2>/dev/null || true
 mkdir -p /run/user/0 /run/dbus /tmp/.X11-unix /tmp/firefox-home /tmp/firefox-home/profile /tmp/firefox-home/Downloads /tmp/firefox-home/Desktop /tmp/firefox-home/Documents /tmp/firefox-home/Applications /tmp/firefox-home/Pictures /tmp/firefox-home/.config /tmp/firefox-home/.local/share/applications /var/log /var/lib/dbus
+mkdir -p /tmp/aurora-archive-demo
+printf 'AuroraOS archive support is working.\nDouble-click ZIP, 7z, RAR, or tar files in Explorer.\n' >/tmp/aurora-archive-demo/README.txt
+(cd /tmp/aurora-archive-demo && zip -q /tmp/firefox-home/Downloads/Aurora-Welcome.zip README.txt) 2>/dev/null || true
 chmod 700 /run/user/0
 chmod 700 /tmp/firefox-home /tmp/firefox-home/profile
 cat >/tmp/firefox-home/.gtkrc-2.0 <<'EOF'
@@ -2275,7 +2446,7 @@ cp /usr/share/applications/aurora-terminal.desktop /tmp/firefox-home/Application
 chmod +x /tmp/firefox-home/Desktop/*.desktop /tmp/firefox-home/Applications/*.desktop 2>/dev/null || true
 update-desktop-database /usr/share/applications >/dev/console 2>&1 || true
 mkdir -p /lib/apk/db /var/cache/apk /etc/apk
-touch /lib/apk/db/installed /lib/apk/db/world
+touch /lib/apk/db/installed /etc/apk/world
 chmod 1777 /tmp /tmp/.X11-unix /dev/shm
 mdev -s 2>/dev/null || true
 modprobe bochs >/dev/console 2>&1 || true
@@ -2287,6 +2458,8 @@ modprobe mousedev 2>/dev/null || true
 modprobe psmouse 2>/dev/null || true
 modprobe hid 2>/dev/null || true
 modprobe hid-generic 2>/dev/null || true
+modprobe xhci-hcd 2>/dev/null || true
+modprobe xhci-pci 2>/dev/null || true
 modprobe usbhid 2>/dev/null || true
 modprobe usbmouse 2>/dev/null || true
 modprobe snd 2>/dev/null || true
@@ -2300,6 +2473,7 @@ modprobe virtio_net 2>/dev/null || true
 modprobe af_packet 2>/dev/null || true
 modprobe cfg80211 2>/dev/null || true
 modprobe mac80211 2>/dev/null || true
+mdev -s 2>/dev/null || true
 for i in 1 2 3; do
     [ -e /sys/class/net/eth0 ] && break
     mdev -s 2>/dev/null || true
@@ -2411,7 +2585,7 @@ def build() -> None:
     paths = download_packages(packages)
     reset_rootfs()
     extract_packages(paths)
-    configure_rootfs()
+    configure_rootfs(packages)
     build_cpio()
 
 
