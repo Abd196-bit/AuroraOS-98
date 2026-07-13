@@ -11,5 +11,5 @@ for browser in firefox firefox-esr; do
 done
 
 printf '%s\n' "aurora-open-firefox: Firefox is not installed in this rootfs." >&2
-printf '%s\n' "Build the full profile: make full-chromium-image" >&2
+printf '%s\n' "Add Firefox to the target distribution package list." >&2
 exit 127

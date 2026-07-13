@@ -19,7 +19,7 @@ BASE = ROOT / "build" / "firefox-qemu"
 APK_DIR = BASE / "apks"
 ROOTFS = BASE / "rootfs"
 OUT = BASE / "aurora-firefox-initramfs.cpio.lz4"
-MODULES_SRC = ROOT / "build" / "linux-base" / "initramfs-root" / "lib" / "modules"
+MODULES_SRC = BASE / "linux-virt" / "lib" / "modules"
 TARGET_ARCH = "x86_64"
 VSCODIUM_FLAC_COMPAT_URL = f"https://dl-cdn.alpinelinux.org/alpine/v3.22/main/{TARGET_ARCH}/libflac-1.4.3-r1.apk"
 REPOS = {
@@ -43,6 +43,7 @@ WANTED = [
     "networkmanager-tui",
     "networkmanager-wifi",
     "desktop-file-utils",
+    "shared-mime-info",
     "dpkg",
     "file",
     "flac-libs",
@@ -98,6 +99,53 @@ def run(cmd: list[str], cwd: Path | None = None) -> None:
 def fetch(url: str) -> bytes:
     with urllib.request.urlopen(url, timeout=60) as response:
         return response.read()
+
+
+def ensure_kernel() -> Path:
+    global MODULES_SRC
+    kernel_root = BASE / "linux-virt"
+    kernel_apks = BASE / "kernel-apks"
+    index_data = fetch(f"{REPOS['main']}/APKINDEX.tar.gz")
+    with tarfile.open(fileobj=io.BytesIO(index_data), mode="r:gz") as archive:
+        member = archive.extractfile("APKINDEX")
+        if member is None:
+            raise RuntimeError("Alpine index did not contain APKINDEX")
+        index_text = member.read().decode()
+
+    package = None
+    for block in index_text.strip().split("\n\n"):
+        fields = dict(
+            line.split(":", 1)
+            for line in block.splitlines()
+            if len(line) > 2 and line[1] == ":"
+        )
+        if fields.get("P") == "linux-virt":
+            package = fields
+            break
+    if package is None:
+        raise RuntimeError(f"Alpine {TARGET_ARCH} linux-virt package was not found")
+
+    filename = f"linux-virt-{package['V']}.apk"
+    kernel_apks.mkdir(parents=True, exist_ok=True)
+    apk = kernel_apks / filename
+    if not apk.exists():
+        print(f"downloading {filename}")
+        apk.write_bytes(fetch(f"{REPOS['main']}/{filename}"))
+
+    if kernel_root.exists():
+        shutil.rmtree(kernel_root)
+    kernel_root.mkdir(parents=True)
+    run(["bsdtar", "-xf", str(apk), "-C", str(kernel_root)])
+    kernel = kernel_root / "boot" / "vmlinuz-virt"
+    if not kernel.exists():
+        matches = sorted((kernel_root / "boot").glob("vmlinuz-*"))
+        if not matches:
+            raise RuntimeError("linux-virt did not contain a kernel")
+        kernel = matches[0]
+    MODULES_SRC = kernel_root / "lib" / "modules"
+    target = BASE / "vmlinuz-virt"
+    shutil.copy2(kernel, target)
+    return target
 
 
 def split_deps(raw: str) -> list[str]:
@@ -1103,6 +1151,7 @@ if [ ! -f /tmp/firefox-home/.config/libfm/libfm.conf ]; then
   cat >/tmp/firefox-home/.config/libfm/libfm.conf <<'EOF'
 [config]
 single_click=0
+quick_exec=1
 use_trash=1
 confirm_del=1
 terminal=xterm
@@ -1247,6 +1296,7 @@ if [ ! -f /tmp/firefox-home/.config/libfm/libfm.conf ]; then
   cat >/tmp/firefox-home/.config/libfm/libfm.conf <<'EOF'
 [config]
 single_click=0
+quick_exec=1
 use_trash=1
 confirm_del=1
 terminal=xterm
@@ -1301,6 +1351,7 @@ if command -v codium >/dev/null 2>&1; then
     --user-data-dir=/tmp/firefox-home/.config/VSCodium "$workspace" \
     >/tmp/aurora-vscodium.log 2>&1
   rc=$?
+  [ "$rc" -eq 0 ] && exit 0
   xmessage -center -title "VSCodium launch error" "VSCodium exited with status $rc.
 
 $(tail -n 18 /tmp/aurora-vscodium.log 2>/dev/null)" 2>/dev/null || true
@@ -1333,6 +1384,9 @@ exec /usr/bin/aurora-code "$@"
 file="$1"
 [ -n "$file" ] || exit 0
 case "$file" in
+  *.desktop|*.Desktop|*.DESKTOP)
+    exec /usr/bin/aurora-launch-desktop-file "$file"
+    ;;
   *.zip|*.ZIP|*.7z|*.7Z|*.rar|*.RAR|*.tar|*.tgz|*.tar.gz|*.tar.xz|*.tar.bz2)
     exec /usr/bin/aurora-open-archive "$file"
     ;;
@@ -1366,6 +1420,67 @@ $file" 2>/dev/null
 fi
 exec xdg-open "$file"
 """,
+        0o755,
+    )
+    write_file(
+        "/usr/bin/aurora-launch-desktop-file",
+        r'''#!/bin/sh
+launcher="$1"
+[ -f "$launcher" ] || exit 1
+name="$(sed -n 's/^Name=//p' "$launcher" | head -n 1)"
+[ -n "$name" ] || name="$(basename "$launcher")"
+xmessage -center -buttons "Open:1,Cancel:0" -title "Open Application" "Open $name?
+
+$launcher" 2>/dev/null
+[ "$?" = 1 ] || exit 0
+error="$(python3 - "$launcher" <<'PY'
+import configparser
+import os
+import shlex
+import subprocess
+import sys
+
+path = os.path.abspath(sys.argv[1])
+config = configparser.ConfigParser(interpolation=None, strict=False)
+config.optionxform = str
+config.read(path, encoding="utf-8")
+entry = config["Desktop Entry"]
+if entry.get("Type", "Application") != "Application":
+    raise SystemExit("Only application desktop files can be opened.")
+if entry.get("Hidden", "false").lower() == "true":
+    raise SystemExit("This application launcher is hidden.")
+
+raw = entry.get("Exec", "").strip()
+if not raw:
+    raise SystemExit("The desktop file has no Exec command.")
+
+name = entry.get("Name", os.path.basename(path))
+icon = entry.get("Icon", "")
+command = []
+for token in shlex.split(raw):
+    if token in {"%f", "%F", "%u", "%U"}:
+        continue
+    if token == "%i":
+        if icon:
+            command.extend(["--icon", icon])
+        continue
+    token = token.replace("%c", name).replace("%k", path).replace("%%", "%")
+    if "%" in token:
+        continue
+    command.append(token)
+
+if not command:
+    raise SystemExit("The desktop file has no runnable command.")
+cwd = entry.get("Path") or os.path.dirname(path)
+if entry.get("Terminal", "false").lower() == "true":
+    command = ["xterm", "-e", *command]
+subprocess.Popen(command, cwd=cwd if os.path.isdir(cwd) else None, env=os.environ.copy())
+PY
+)" || {
+  xmessage -center -title "Application Launch Failed" "$error" 2>/dev/null || true
+  exit 1
+}
+''',
         0o755,
     )
     write_file(
@@ -1640,6 +1755,18 @@ Categories=System;PackageManager;AuroraOS98;
 """,
     )
     write_file(
+        "/usr/share/applications/aurora-launch-desktop-file.desktop",
+        """[Desktop Entry]
+Type=Application
+Name=Open Application Launcher
+Exec=/usr/bin/aurora-launch-desktop-file %f
+Icon=application-x-executable
+Terminal=false
+NoDisplay=true
+MimeType=application/x-desktop;application/x-desktop-item;
+""",
+    )
+    write_file(
         "/usr/share/aurora/mimeapps.list",
         """[Default Applications]
 application/x-ms-dos-executable=aurora-run-exe-file.desktop
@@ -1663,6 +1790,8 @@ application/x-xz=aurora-archive-manager.desktop
 application/x-bzip2=aurora-archive-manager.desktop
 application/vnd.alpine.apk=aurora-install-apk.desktop
 application/x-alpine-package=aurora-install-apk.desktop
+application/x-desktop=aurora-launch-desktop-file.desktop
+application/x-desktop-item=aurora-launch-desktop-file.desktop
 
 [Added Associations]
 application/octet-stream=aurora-open-downloaded-file.desktop;aurora-run-exe-file.desktop;
@@ -1682,6 +1811,8 @@ application/x-xz=aurora-archive-manager.desktop;
 application/x-bzip2=aurora-archive-manager.desktop;
 application/vnd.alpine.apk=aurora-install-apk.desktop;
 application/x-alpine-package=aurora-install-apk.desktop;
+application/x-desktop=aurora-launch-desktop-file.desktop;
+application/x-desktop-item=aurora-launch-desktop-file.desktop;
 """,
     )
     write_file(
@@ -2445,6 +2576,7 @@ cp /usr/share/applications/aurora-task-view.desktop /tmp/firefox-home/Applicatio
 cp /usr/share/applications/aurora-terminal.desktop /tmp/firefox-home/Applications/Terminal.desktop 2>/dev/null || true
 chmod +x /tmp/firefox-home/Desktop/*.desktop /tmp/firefox-home/Applications/*.desktop 2>/dev/null || true
 update-desktop-database /usr/share/applications >/dev/console 2>&1 || true
+update-mime-database /usr/share/mime >/dev/console 2>&1 || true
 mkdir -p /lib/apk/db /var/cache/apk /etc/apk
 touch /lib/apk/db/installed /etc/apk/world
 chmod 1777 /tmp /tmp/.X11-unix /dev/shm
@@ -2577,7 +2709,7 @@ def build_cpio() -> None:
 
 def build() -> None:
     if not MODULES_SRC.exists():
-        raise RuntimeError("run make linux-qemu first so kernel modules are available")
+        raise RuntimeError("Linux kernel modules are unavailable")
     by_name, provides = parse_indexes()
     packages = resolve_packages(by_name, provides)
     total = sum(int(pkg.get("S", "0")) for pkg in packages)
@@ -2594,6 +2726,7 @@ def main() -> int:
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--pack-existing", action="store_true")
     args = parser.parse_args()
+    ensure_kernel()
     if args.build:
         build()
         return 0

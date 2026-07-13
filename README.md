@@ -127,7 +127,7 @@ The runnable preview and the production architecture are intentionally separated
 | --- | --- | --- |
 | Kernel | Linux | Linux |
 | Userspace | Alpine initramfs | Persistent Linux root filesystem |
-| Display | Xorg framebuffer | Wayland |
+| Display | Xorg with virtio-gpu | Wayland |
 | Window manager | JWM | Aurora compositor/window manager |
 | Desktop icons | iDesk | Aurora Desktop |
 | Settings and system tools | Native Tk applications | Modular Aurora services and frontends |

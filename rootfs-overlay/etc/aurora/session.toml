@@ -2,7 +2,7 @@
 name = "AuroraOS 98"
 compositor = "aurora-compositor"
 shell = "aurora-shell"
-toolkit_profile = "serenity-classic-pixel"
+toolkit_profile = "aurora-classic"
 pixel_scale = 2
 
 [browser]

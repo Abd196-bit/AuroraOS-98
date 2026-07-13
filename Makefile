@@ -7,7 +7,7 @@ AURORA_QEMU_REFRESH ?= 60
 AURORA_QEMU_CPUS ?= 4
 AURORA_QEMU_ACCEL ?= tcg,thread=multi
 
-.PHONY: all check icons provided-icons system-icons assets native rootfs qemu-progress run-qemu-progress qemu-gui run-qemu-gui qemu-icon-gui run-qemu-icon-gui linux-qemu run-linux-qemu firefox-qemu run-firefox-qemu firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-linux-qemu serenity-reference-check serenity-behavior-check chromium-runtime-check chromium-rootfs-check full-chromium-image run-full-chromium-qemu run-shell pi4-image pi5-image x86_64-chromium-image clean aurora-fb-shell
+.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi4-image pi5-image clean
 
 all: check native rootfs
 
@@ -32,9 +32,6 @@ assets:
 icons:
 	python3 tools/generate_pixel_icons.py
 
-provided-icons:
-	python3 tools/extract_provided_icons.py
-
 system-icons:
 	python3 tools/prepare_icon_pack.py
 
@@ -45,13 +42,7 @@ native:
 	$(CC) -std=c11 -Wall -Wextra -O2 src/aurora-pi-hardwared/main.c -o "$(BUILD_DIR)/libexec/aurora/aurora-pi-hardwared"
 	@printf 'Built native Aurora component scaffolds in %s\n' "$(BUILD_DIR)"
 
-aurora-fb-shell:
-	@mkdir -p "$(BUILD_DIR)/bin"
-	$(CC) -std=c11 -Wall -Wextra -O2 src/aurora-fb-shell/aurora_fb_shell.c -o "$(BUILD_DIR)/bin/aurora-fb-shell"
-	@printf 'Built optimized Aurora framebuffer shell\n'
-	@ls -lh "$(BUILD_DIR)/bin/aurora-fb-shell"
-
-rootfs: icons provided-icons system-icons assets native
+rootfs: icons system-icons assets native
 	@mkdir -p "$(ROOTFS_DIR)/usr/share/aurora/assets" \
 		"$(ROOTFS_DIR)/usr/lib/systemd/system" \
 		"$(ROOTFS_DIR)/usr/lib/systemd/user" \
@@ -72,80 +63,17 @@ rootfs: icons provided-icons system-icons assets native
 	@if [ -d rootfs-overlay ]; then cp -R rootfs-overlay/. "$(ROOTFS_DIR)/"; fi
 	@printf 'Created staged Aurora rootfs overlay at %s\n' "$(ROOTFS_DIR)"
 
-qemu-progress:
-	@mkdir -p "$(BUILD_DIR)/tools"
-	$(CC) -std=c11 -Wall -Wextra -O2 tools/mk_qemu_progress_boot.c -o "$(BUILD_DIR)/tools/mk_qemu_progress_boot"
-	"$(BUILD_DIR)/tools/mk_qemu_progress_boot" "$(BUILD_DIR)/aurora-progress.img"
-	@printf 'Created QEMU progress boot image at %s\n' "$(BUILD_DIR)/aurora-progress.img"
-
-run-qemu-progress: qemu-progress
-	qemu-system-x86_64 -m 128M -drive file="$(BUILD_DIR)/aurora-progress.img",format=raw,if=floppy -boot a -display none -serial stdio
-
-qemu-gui:
-	@mkdir -p "$(BUILD_DIR)/tools"
-	$(CC) -std=c11 -Wall -Wextra -O2 tools/mk_qemu_gui_boot.c -o "$(BUILD_DIR)/tools/mk_qemu_gui_boot"
-	"$(BUILD_DIR)/tools/mk_qemu_gui_boot" "$(BUILD_DIR)/aurora-gui.img"
-	@printf 'Created QEMU GUI boot image at %s\n' "$(BUILD_DIR)/aurora-gui.img"
-
-run-qemu-gui: qemu-gui
-	qemu-system-x86_64 -m 128M -drive file="$(BUILD_DIR)/aurora-gui.img",format=raw,if=ide -boot c
-
-qemu-icon-gui: system-icons
-	python3 tools/mk_qemu_icon_boot.py
-	@printf 'Created QEMU icon GUI boot image at %s\n' "$(BUILD_DIR)/aurora-icon-gui.img"
-
-run-qemu-icon-gui: qemu-icon-gui
-	qemu-system-x86_64 -m 128M -drive file="$(BUILD_DIR)/aurora-icon-gui.img",format=raw,if=ide -boot c
-
-linux-qemu: qemu-icon-gui
-	python3 tools/mk_linux_framebuffer_screens.py
-	python3 tools/build_linux_qemu.py
-
-firefox-qemu: linux-qemu
+firefox-qemu:
 	python3 tools/build_firefox_qemu.py --build
 
 firefox-qemu-arm64:
 	python3 tools/build_arm64_qemu.py --build
 
-serenity-reference-check:
-	@test -d third_party/serenity/.git
-	@test -f src/aurora-serenity-bridge/component_map.toml
-	@test -f docs/serenity-linux-adaptation.md
-	@printf 'OK: SerenityOS is available as an Aurora Linux reference, not as the base OS.\n'
-
-serenity-behavior-check: serenity-reference-check
-	python3 tools/check_serenity_behavior_sources.py
-
-chromium-runtime-check:
-	@test -f docs/chromium-runtime.md
-	@printf 'OK: Chromium is assigned to the full graphical Linux rootfs, not the framebuffer initramfs.\n'
-
-chromium-rootfs-check:
-	python3 tools/build_full_chromium_image.py --check
-
-full-chromium-image: rootfs
-	python3 tools/build_full_chromium_image.py --build
-
-run-full-chromium-qemu:
-	python3 tools/run_full_chromium_qemu.py
-
-run-linux-qemu: linux-qemu
-	qemu-system-x86_64 -m 768M \
-		-kernel build/linux-base/iso/boot/vmlinuz-virt \
-		-initrd build/linux-base/aurora-initramfs.cpio.gz \
-		-append "console=tty0 init=/init quiet video=Virtual-1:$(AURORA_QEMU_WIDTH)x$(AURORA_QEMU_HEIGHT)@$(AURORA_QEMU_REFRESH)" \
-		-device virtio-vga,xres=$(AURORA_QEMU_WIDTH),yres=$(AURORA_QEMU_HEIGHT) \
-		-device usb-ehci,id=ehci \
-		-device usb-tablet,bus=ehci.0 \
-		-display cocoa \
-		-monitor none \
-		-serial none
-
 run-firefox-qemu:
 	qemu-system-x86_64 -m 6144M \
 		-accel $(AURORA_QEMU_ACCEL) \
 		-smp $(AURORA_QEMU_CPUS) \
-		-kernel build/linux-base/iso/boot/vmlinuz-virt \
+		-kernel build/firefox-qemu/vmlinuz-virt \
 		-initrd build/firefox-qemu/aurora-firefox-initramfs.cpio.lz4 \
 		-append "console=tty0 init=/init quiet video=Virtual-1:$(AURORA_QEMU_WIDTH)x$(AURORA_QEMU_HEIGHT)@$(AURORA_QEMU_REFRESH)" \
 		-device virtio-vga,xres=$(AURORA_QEMU_WIDTH),yres=$(AURORA_QEMU_HEIGHT) \
@@ -181,20 +109,14 @@ run-firefox-qemu-arm64:
 
 run-fast-qemu: run-firefox-qemu-arm64
 
-open-linux-qemu:
+open-qemu:
 	open "$(CURDIR)/run-aurora-qemu.command"
-
-run-shell: system-icons
-	python3 src/aurora-shell/aurora_shell.py
 
 pi4-image:
 	@printf 'Pi 4 image target: use distro/buildroot/raspberrypi4_defconfig with overlays from %s\n' "$(ROOTFS_DIR)"
 
 pi5-image:
 	@printf 'Pi 5 image target: use distro/buildroot/raspberrypi5_defconfig with overlays from %s\n' "$(ROOTFS_DIR)"
-
-x86_64-chromium-image:
-	@printf 'x86-64 Chromium image target: make full-chromium-image, then make run-full-chromium-qemu\n'
 
 clean:
 	@rm -rf "$(BUILD_DIR)"

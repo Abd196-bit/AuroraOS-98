@@ -3,10 +3,6 @@
 Aurora Task Manager is the Linux implementation of the classic system monitor
 workflow.
 
-Serenity reference:
-
-- `third_party/serenity/Userland/Applications/SystemMonitor`
-
 Linux backends:
 
 - `/proc`

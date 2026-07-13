@@ -11,12 +11,7 @@ Native software management UI for:
 
 See `docs/package-center.md`.
 
-## Serenity-Informed Behavior
-
-Reference: SerenityOS `Ports` and application organization.
-
-Aurora does not replace Linux package management with Serenity ports. Package
-Center adapts the discoverability pattern to:
+Package Center provides one discoverable interface for:
 
 - native packages
 - Flatpak

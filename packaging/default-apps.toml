@@ -1,15 +1,14 @@
 [browser]
 packages = ["firefox", "chromium"]
 default = "firefox"
-profile_role = "Serenity-style framebuffer browser base"
+profile_role = "Aurora Linux desktop browser"
 launcher = "/usr/bin/aurora-open-firefox"
 desktop_entry = "aurora-firefox.desktop"
 
-[serenity_framebuffer_base]
+[aurora_linux_desktop]
 enabled = true
-name = "AuroraOS 98 Serenity Framebuffer Base"
-description = "Linux base with Serenity-inspired framebuffer shell behavior and Firefox as the default browser."
-reference = "third_party/serenity"
+name = "AuroraOS 98 Linux Desktop"
+description = "Linux desktop base with Firefox and Aurora system applications."
 keeps_linux = ["linux-kernel", "systemd", "wayland", "pipewire", "networkmanager", "native-packages", "flatpak", "appimage"]
 core_apps = [
   "firefox",

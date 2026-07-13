@@ -16,11 +16,9 @@ Required views:
 
 Explorer should use mature Linux filesystem APIs and avoid custom storage abstractions unless they improve usability or compatibility.
 
-## Serenity-Informed Behavior
+## Required Behavior
 
-Reference: `third_party/serenity/Userland/Applications/FileManager`.
-
-Aurora Explorer ports the behavior, not the OS dependency:
+Aurora Explorer provides:
 
 - My Computer namespace
 - directory icon/list views
@@ -30,5 +28,4 @@ Aurora Explorer ports the behavior, not the OS dependency:
 - network locations
 - Control Panel and Pi tools namespaces
 
-Linux backends remain POSIX filesystem APIs, mount/device discovery, and
-NetworkManager integration.
+It uses POSIX filesystem APIs, mount/device discovery, and NetworkManager integration.

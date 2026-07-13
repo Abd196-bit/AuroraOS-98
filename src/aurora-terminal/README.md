@@ -10,9 +10,5 @@ Requirements:
 - standard shell compatibility
 - configurable font scale using integer steps
 
-## Serenity-Informed Behavior
-
-Reference: `third_party/serenity/Userland/Applications/Terminal`.
-
-Aurora Terminal keeps the classic fast terminal workflow but uses Linux PTYs and
-standard shells. It must not invent a Serenity-specific command environment.
+Aurora Terminal uses Linux PTYs and standard shells so existing command-line
+tools behave normally.

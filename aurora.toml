@@ -3,7 +3,7 @@ name = "AuroraOS"
 product = "linux-operating-system"
 identity = "pixelated-classic-desktop"
 base = ["linux-kernel", "wayland", "systemd", "pipewire", "networkmanager"]
-profile = "auroraos-98-serenity-framebuffer"
+profile = "auroraos-98-linux-desktop"
 
 [targets.raspberry_pi_4]
 arch = "aarch64"
@@ -35,22 +35,13 @@ scaling = "integer-only"
 filter = "nearest-neighbor"
 theme = "aurora-classic"
 
-[references.serenityos]
-repo = "https://github.com/SerenityOS/serenity"
-local_path = "third_party/serenity"
-policy = "reference-and-license-compatible-adaptation-only"
-linux_boundary = "Aurora keeps Linux kernel, systemd, Wayland, PipeWire, NetworkManager, native packages, Flatpak, and AppImage"
-behavior_catalog = "src/aurora-serenity-bridge/behavior_catalog.toml"
-behavior_contract = "docs/aurora-behavior-port.md"
-
-[profiles.auroraos_98_serenity_framebuffer]
+[profiles.auroraos_98_linux_desktop]
 name = "AuroraOS 98"
 base = "Linux"
-framebuffer_behavior = "SerenityOS-inspired"
-default_browser = "chromium"
-purpose = "QEMU/Raspberry Pi framebuffer shell profile with Serenity-style desktop behavior and Linux app compatibility."
+display = "Wayland production, Xorg QEMU preview"
+default_browser = "firefox"
+purpose = "Linux desktop profile with Aurora UI and broad Linux application compatibility."
 
 [components.task_manager]
 source = "src/aurora-task-manager"
 linux_backends = ["/proc", "cgroups", "systemd", "aurora-pi-hardwared"]
-reference = "third_party/serenity/Userland/Applications/SystemMonitor"

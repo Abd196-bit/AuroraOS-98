@@ -13,13 +13,4 @@ Initial technical direction:
 
 This is not a theme layer. It owns window placement, focus, decorations, and shell integration.
 
-## Serenity-Informed Behavior
-
-Reference behavior comes from SerenityOS `WindowServer`, but Aurora implements it
-on Linux:
-
-- `WindowManager.cpp` -> Aurora focus, stacking, placement
-- `WindowFrame.cpp` -> square Aurora title bars and hit testing
-- `MenuManager.cpp` -> keyboard/mouse menu routing
-
-Aurora must keep Wayland, DRM/KMS, and libinput as the real backends.
+Aurora uses Wayland, DRM/KMS, and libinput as its native backends.
