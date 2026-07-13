@@ -1,0 +1,27 @@
+AuroraOS 98
+Copyright (C) 2026 AuroraOS contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Asset and third-party notice
+----------------------------
+
+This license applies to the original AuroraOS source code in this
+repository. It does not relicense third-party software or material.
+External applications, fonts, sounds, screenshots, icons, artwork,
+and reference material remain subject to their respective licenses,
+copyrights, and distribution terms unless an accompanying file
+explicitly states otherwise.

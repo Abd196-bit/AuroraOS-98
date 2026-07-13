@@ -122,5 +122,10 @@ Every feature must improve at least one of usability, performance, compatibility
 
 ## License and assets
 
-AuroraOS source code requires a project license before third-party redistribution. External applications keep their own licenses. Raw third-party reference repositories, downloaded package archives, and local icon-source collections are excluded from this repository.
-
+Original AuroraOS source code is licensed under
+[GPL-3.0-or-later](LICENSE). External applications and third-party material
+keep their own licenses and copyright terms. The AuroraOS license does not
+relicense fonts, sounds, screenshots, icons, artwork, or reference material
+unless an accompanying file explicitly states otherwise. Raw third-party
+reference repositories, downloaded package archives, and local icon-source
+collections are excluded from this repository.
