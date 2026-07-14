@@ -101,6 +101,31 @@ make run-firefox-qemu
 The x86-64 image is also the appropriate preview for testing Wine and x86 Windows
 executables. Wine in the ARM64 preview does not provide x86 CPU translation.
 
+### Debian 13
+
+On an x86-64 Debian 13 PC, install the build and QEMU dependencies:
+
+```sh
+sudo apt update
+sudo apt install git make python3 gcc qemu-system-x86 qemu-system-gui \
+  cpio lz4 libarchive-tools xz-utils
+git clone https://github.com/Abd196-bit/AuroraOS-98.git
+cd AuroraOS-98
+make firefox-qemu
+make run-firefox-qemu-linux
+```
+
+The first build downloads the Alpine userspace and applications and needs about
+8 GB of free disk space. The VM uses 6 GB RAM. For native-speed virtualization,
+the user must have access to `/dev/kvm`; on a standard Debian installation:
+
+```sh
+sudo usermod -aG kvm "$USER"
+```
+
+Log out and back in after changing group membership. The Linux launcher falls
+back to slower software emulation when KVM is unavailable.
+
 ### Requirements
 
 - macOS or Linux host

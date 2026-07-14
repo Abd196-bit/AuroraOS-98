@@ -9,7 +9,7 @@ AURORA_QEMU_ACCEL ?= tcg,thread=multi
 AURORA_QEMU_MONITOR ?= /tmp/aurora-qemu-monitor.sock
 AURORA_QEMU_QMP ?= /tmp/aurora-qemu-qmp.sock
 
-.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi-test-image pi4-image pi5-image clean
+.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu run-firefox-qemu-linux firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi-test-image pi4-image pi5-image clean
 
 all: check native rootfs
 
@@ -86,6 +86,32 @@ run-firefox-qemu:
 		-netdev user,id=net0 \
 		-device virtio-net-pci,netdev=net0 \
 		-display cocoa \
+		-monitor none \
+		-serial stdio
+
+run-firefox-qemu-linux:
+	@if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then \
+		accel=kvm; cpu=host; \
+	else \
+		printf 'KVM is unavailable; falling back to slower software emulation.\n'; \
+		accel=tcg,thread=multi; cpu=max; \
+	fi; \
+	qemu-system-x86_64 -m 6144M \
+		-accel "$$accel" \
+		-cpu "$$cpu" \
+		-smp $(AURORA_QEMU_CPUS) \
+		-kernel build/firefox-qemu/vmlinuz-virt \
+		-initrd build/firefox-qemu/aurora-firefox-initramfs.cpio.lz4 \
+		-append "console=tty0 init=/init quiet video=Virtual-1:$(AURORA_QEMU_WIDTH)x$(AURORA_QEMU_HEIGHT)@$(AURORA_QEMU_REFRESH)" \
+		-device virtio-vga,xres=$(AURORA_QEMU_WIDTH),yres=$(AURORA_QEMU_HEIGHT) \
+		-device qemu-xhci,id=xhci \
+		-device usb-tablet,bus=xhci.0 \
+		-device usb-kbd,bus=xhci.0 \
+		-audiodev pipewire,id=aud0 \
+		-device ES1370,audiodev=aud0 \
+		-netdev user,id=net0 \
+		-device virtio-net-pci,netdev=net0 \
+		-display gtk,zoom-to-fit=on \
 		-monitor none \
 		-serial stdio
 
