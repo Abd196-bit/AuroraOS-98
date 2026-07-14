@@ -2,6 +2,33 @@
 
 AuroraOS supports Raspberry Pi 4 and Raspberry Pi 5 as first-class targets, not as generic low-end PCs.
 
+## Hardware Test Image
+
+`make pi-test-image` creates an experimental Pi 4/5 `.img.xz` using Alpine's
+official Raspberry Pi firmware and kernel with the current Aurora RAM desktop.
+It is intended to validate display, USB input, Ethernet/Wi-Fi detection, and the
+desktop startup path before the persistent Buildroot image is complete.
+
+Requirements and limitations:
+
+- Raspberry Pi 4 or Pi 5 with at least 4 GB RAM
+- microSD card with at least 2 GB capacity
+- no persistence across reboot
+- Ethernet recommended for the first test
+- physical boot verification is still required
+
+Flash the downloaded `.img.xz` directly with Raspberry Pi Imager by choosing
+**Use custom**, selecting the archive, and writing it to the microSD card. You
+can also use `xz` and `dd` on Linux:
+
+```sh
+xz -dc AuroraOS-98-Pi4-Pi5-test-0.1.img.xz | \
+  sudo dd of=/dev/sdX bs=4M conv=fsync status=progress
+```
+
+Replace `/dev/sdX` with the whole microSD device. Writing to the wrong device
+will destroy its contents.
+
 ## Pi Tools
 
 Aurora Pi Tools provides:

@@ -9,7 +9,7 @@ AURORA_QEMU_ACCEL ?= tcg,thread=multi
 AURORA_QEMU_MONITOR ?= /tmp/aurora-qemu-monitor.sock
 AURORA_QEMU_QMP ?= /tmp/aurora-qemu-qmp.sock
 
-.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi4-image pi5-image clean
+.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi-test-image pi4-image pi5-image clean
 
 all: check native rootfs
 
@@ -116,11 +116,12 @@ run-fast-qemu: run-firefox-qemu-arm64
 open-qemu:
 	open "$(CURDIR)/run-aurora-qemu.command"
 
-pi4-image:
-	@printf 'Pi 4 image target: use distro/buildroot/raspberrypi4_defconfig with overlays from %s\n' "$(ROOTFS_DIR)"
+pi-test-image:
+	python3 tools/build_raspberry_pi_image.py
 
-pi5-image:
-	@printf 'Pi 5 image target: use distro/buildroot/raspberrypi5_defconfig with overlays from %s\n' "$(ROOTFS_DIR)"
+pi4-image: pi-test-image
+
+pi5-image: pi-test-image
 
 clean:
 	@rm -rf "$(BUILD_DIR)"

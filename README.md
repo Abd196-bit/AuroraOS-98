@@ -2,7 +2,7 @@
 
 AuroraOS 98 is an experimental Linux operating-system environment for x86-64 PCs and Raspberry Pi hardware. It combines a classic desktop workflow with current Linux application compatibility: real windows, a Start menu, desktop icons, multiple workspaces, a graphical control center, and standard Linux software underneath.
 
-> **Project status:** active development preview. Hardware-accelerated ARM64 and x86-64 QEMU images are runnable today. Raspberry Pi images, the production Wayland compositor, persistent installation, and update infrastructure are still under development.
+> **Project status:** active development preview. Hardware-accelerated ARM64 and x86-64 QEMU images are runnable today. An experimental Raspberry Pi 4/5 hardware-test image is available; the production Wayland compositor, persistent installation, and update infrastructure are still under development.
 
 ![AuroraOS 98 desktop](docs/screenshots/desktop.png)
 
@@ -125,6 +125,23 @@ build/firefox-qemu-arm64/aurora-firefox-initramfs.cpio.lz4
 
 Build products are intentionally excluded from Git because the current image is close to 1 GB.
 
+## Raspberry Pi 4 / Pi 5 test image
+
+Download the experimental image from the
+[pi-test-0.1 prerelease](https://github.com/Abd196-bit/AuroraOS-98/releases/tag/pi-test-0.1).
+It requires a Pi 4 or Pi 5 with at least 4 GB RAM and a 2 GB or larger microSD
+card. In Raspberry Pi Imager, choose **Use custom**, select the downloaded
+`.img.xz`, choose the microSD card, and write it. The image runs from RAM and
+does not preserve changes after reboot.
+
+The image archive is also reproducible locally:
+
+```sh
+brew install mtools lz4 xz libarchive
+make firefox-qemu-arm64
+make pi-test-image
+```
+
 ### VM controls
 
 - Click inside the QEMU window to use the mouse and keyboard.
@@ -177,9 +194,8 @@ Every feature must improve at least one of usability, performance, compatibility
 - Packages installed while the preview is running are lost when it reboots.
 - QEMU exposes Ethernet NAT, not the Mac's physical Wi-Fi radio.
 - Unity Hub is proprietary and is represented by an official installer flow rather than redistributed in the base image.
-- Raspberry Pi 4/5 boot images are not release-ready.
-- There is currently no downloadable Raspberry Pi `.img`; the existing Pi image
-  Make targets are architecture placeholders, not bootable image builders.
+- The Raspberry Pi 4/5 image is an unverified hardware-test build, not a stable
+  release. It is RAM-based and non-persistent.
 - The full Wayland/systemd/PipeWire production session is architectural work in progress.
 
 ## License and assets
