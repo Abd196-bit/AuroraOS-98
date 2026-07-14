@@ -26,7 +26,8 @@
       <a href="#platform">Platform</a>
       <a href="#raspberry-pi">Raspberry Pi</a>
       <a href="#status">Status</a>
-      <a class="nav-download bevel" href="#run">Run preview</a>
+      <a href="https://github.com/Abd196-bit/AuroraOS-98">GitHub repo</a>
+      <a class="nav-download bevel" href="#download">Download</a>
     </nav>
   </header>
 
@@ -37,8 +38,8 @@
         <h1 id="hero-title">AuroraOS <span>98</span></h1>
         <p class="hero-lede">A fast, keyboard-and-mouse-first operating system for Raspberry Pi and PCs. Classic desktop discipline, current Linux software, and an identity of its own.</p>
         <div class="hero-actions">
-          <a class="button primary bevel" href="#run">Run the QEMU preview</a>
-          <a class="button secondary bevel" href="https://github.com/Abd196-bit/AuroraOS-98">View source</a>
+          <a class="button primary bevel" href="#download">Download AuroraOS</a>
+          <a class="button secondary bevel" href="https://github.com/Abd196-bit/AuroraOS-98">GitHub repository</a>
         </div>
         <dl class="hero-facts" aria-label="Platform summary">
           <div><dt>Kernel</dt><dd>Linux 6.18</dd></div>
@@ -167,9 +168,44 @@
       </div>
     </section>
 
+    <section class="section download-section" id="download" aria-labelledby="download-title">
+      <div class="section-heading light">
+        <p class="section-number">05 / DOWNLOADS</p>
+        <h2 id="download-title">Get AuroraOS 98.</h2>
+        <p>Download the current source or build the runnable QEMU preview. Raspberry Pi images will appear here only after they pass real hardware boot testing.</p>
+      </div>
+
+      <div class="download-list">
+        <article class="download-row">
+          <img src="assets/icons/computer.png" width="64" height="64" alt="">
+          <div class="download-name"><h3>Source archive</h3><p>Complete main branch as a ZIP file</p></div>
+          <div class="download-meta"><span>ZIP</span><b>AVAILABLE</b></div>
+          <a class="button primary bevel" href="https://github.com/Abd196-bit/AuroraOS-98/archive/refs/heads/main.zip">Download source</a>
+        </article>
+        <article class="download-row">
+          <img src="assets/icons/terminal.png" width="64" height="64" alt="">
+          <div class="download-name"><h3>QEMU desktop preview</h3><p>ARM64 for Apple Silicon and x86-64 hosts</p></div>
+          <div class="download-meta"><span>BUILD</span><b>AVAILABLE</b></div>
+          <a class="button secondary bevel" href="#run">Build instructions</a>
+        </article>
+        <article class="download-row pending" aria-label="Raspberry Pi image, in development">
+          <img src="assets/icons/pi-tools.png" width="64" height="64" alt="">
+          <div class="download-name"><h3>Raspberry Pi 4 / Pi 5 image</h3><p>Bootable SD-card image for real hardware</p></div>
+          <div class="download-meta"><span>.IMG.XZ</span><b>IN DEVELOPMENT</b></div>
+          <button class="button disabled bevel" type="button" disabled>Not released yet</button>
+        </article>
+      </div>
+
+      <div class="download-note">
+        <strong>Why no Pi image yet?</strong>
+        <p>The repository has initial Buildroot definitions, but it does not yet have completed Aurora package recipes, Raspberry Pi firmware assembly, a persistent root filesystem, or verified Pi 4/5 boot output. The QEMU ARM64 kernel is for QEMU's virtual machine and cannot boot a Raspberry Pi.</p>
+        <a href="https://github.com/Abd196-bit/AuroraOS-98">Follow Raspberry Pi development on GitHub →</a>
+      </div>
+    </section>
+
     <section class="section run-section" id="run" aria-labelledby="run-title">
       <div class="run-copy">
-        <p class="section-number">05 / TRY IT</p>
+        <p class="section-number">06 / TRY IT</p>
         <h2 id="run-title">Boot AuroraOS 98.</h2>
         <p>The fastest current route is the hardware-accelerated ARM64 QEMU image on Apple Silicon. Build products stay local and are not committed to Git.</p>
         <div class="requirements"><span>macOS or Linux</span><span>Python 3</span><span>QEMU</span><span>6 GB VM RAM</span></div>

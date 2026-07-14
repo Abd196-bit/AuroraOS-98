@@ -178,6 +178,8 @@ Every feature must improve at least one of usability, performance, compatibility
 - QEMU exposes Ethernet NAT, not the Mac's physical Wi-Fi radio.
 - Unity Hub is proprietary and is represented by an official installer flow rather than redistributed in the base image.
 - Raspberry Pi 4/5 boot images are not release-ready.
+- There is currently no downloadable Raspberry Pi `.img`; the existing Pi image
+  Make targets are architecture placeholders, not bootable image builders.
 - The full Wayland/systemd/PipeWire production session is architectural work in progress.
 
 ## License and assets
