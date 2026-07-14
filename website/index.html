@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AuroraOS 98 is an experimental Linux operating system for Raspberry Pi and PCs, combining a classic desktop workflow with modern Linux compatibility.">
+  <meta name="theme-color" content="#111111">
+  <title>AuroraOS 98 | Classic desktop. Modern Linux.</title>
+  <link rel="icon" type="image/png" href="assets/icons/computer.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header" data-header>
+    <a class="brand" href="#top" aria-label="AuroraOS 98 home">
+      <img src="assets/icons/computer.png" width="48" height="48" alt="">
+      <span>AuroraOS <strong>98</strong></span>
+    </a>
+    <button class="nav-toggle bevel" type="button" aria-expanded="false" aria-controls="site-nav" data-nav-toggle>
+      <span aria-hidden="true">☰</span><span class="sr-only">Open navigation</span>
+    </button>
+    <nav class="site-nav" id="site-nav" aria-label="Main navigation" data-nav>
+      <a href="#experience">Experience</a>
+      <a href="#platform">Platform</a>
+      <a href="#raspberry-pi">Raspberry Pi</a>
+      <a href="#status">Status</a>
+      <a class="nav-download bevel" href="#run">Run preview</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="kicker"><span class="status-light" aria-hidden="true"></span> Linux underneath. Aurora everywhere else.</p>
+        <h1 id="hero-title">AuroraOS <span>98</span></h1>
+        <p class="hero-lede">A fast, keyboard-and-mouse-first operating system for Raspberry Pi and PCs. Classic desktop discipline, current Linux software, and an identity of its own.</p>
+        <div class="hero-actions">
+          <a class="button primary bevel" href="#run">Run the QEMU preview</a>
+          <a class="button secondary bevel" href="https://github.com/Abd196-bit/AuroraOS-98">View source</a>
+        </div>
+        <dl class="hero-facts" aria-label="Platform summary">
+          <div><dt>Kernel</dt><dd>Linux 6.18</dd></div>
+          <div><dt>Targets</dt><dd>Pi 4 / Pi 5 / PC</dd></div>
+          <div><dt>License</dt><dd>GPL-3.0+</dd></div>
+        </dl>
+      </div>
+
+      <figure class="hero-screen">
+        <div class="screen-titlebar">
+          <span class="screen-title-icon" aria-hidden="true"></span>
+          <span>AuroraOS 98 - Desktop Preview</span>
+          <span class="window-controls" aria-hidden="true"><i>_</i><i>□</i><i>×</i></span>
+        </div>
+        <img src="assets/screenshots/desktop.png" width="1440" height="900" alt="AuroraOS 98 desktop running in QEMU with desktop applications and a classic taskbar">
+        <figcaption>Current ARM64 development preview · 1440 × 900</figcaption>
+      </figure>
+    </section>
+
+    <section class="release-strip" aria-label="Project status summary">
+      <div><span>PREVIEW 0.1</span> Runnable today in QEMU</div>
+      <div><span>REAL APPS</span> Firefox ESR + VSCodium</div>
+      <div><span>REAL LINUX</span> Alpine userspace + Xorg preview</div>
+    </section>
+
+    <section class="section experience" id="experience" aria-labelledby="experience-title">
+      <div class="section-heading">
+        <p class="section-number">01 / EXPERIENCE</p>
+        <h2 id="experience-title">A desktop built for doing work.</h2>
+        <p>Every visible control has a job. Windows are square, state is obvious, spacing is compact, and familiar Linux applications run as themselves.</p>
+      </div>
+
+      <div class="gallery" data-gallery>
+        <div class="gallery-tabs" role="tablist" aria-label="AuroraOS screenshots">
+          <button role="tab" aria-selected="true" aria-controls="gallery-image" data-image="assets/screenshots/desktop.png" data-alt="AuroraOS 98 desktop with icons and taskbar" data-caption="Desktop · Start menu, taskbar, four workspaces, original icons">Desktop</button>
+          <button role="tab" aria-selected="false" aria-controls="gallery-image" data-image="assets/screenshots/settings.png" data-alt="Aurora Settings application" data-caption="Settings · One graphical control center for system, network, sound, apps, and workspaces">Settings</button>
+          <button role="tab" aria-selected="false" aria-controls="gallery-image" data-image="assets/screenshots/firefox.png" data-alt="Firefox ESR loading a live website in AuroraOS" data-caption="Firefox ESR · Real browser, QEMU NAT networking, normal downloads">Firefox</button>
+          <button role="tab" aria-selected="false" aria-controls="gallery-image" data-image="assets/screenshots/vscodium.png" data-alt="VSCodium running inside AuroraOS" data-caption="VSCodium · Native Alpine package, not a placeholder editor">VSCodium</button>
+        </div>
+        <div class="gallery-stage">
+          <img id="gallery-image" src="assets/screenshots/desktop.png" width="1440" height="900" alt="AuroraOS 98 desktop with icons and taskbar" data-gallery-image>
+          <p data-gallery-caption>Desktop · Start menu, taskbar, four workspaces, original icons</p>
+        </div>
+      </div>
+
+      <div class="feature-grid">
+        <article>
+          <img src="assets/icons/explorer.png" width="72" height="72" alt="">
+          <div><h3>Aurora Explorer</h3><p>Browse files, downloads, devices, archives, AppImages, packages, and application launchers from one graphical file manager.</p></div>
+        </article>
+        <article>
+          <img src="assets/icons/settings.png" width="72" height="72" alt="">
+          <div><h3>Unified settings</h3><p>System, networking, sound, appearance, applications, and workspaces live in a single native settings application.</p></div>
+        </article>
+        <article>
+          <img src="assets/icons/package-center.png" width="72" height="72" alt="">
+          <div><h3>Linux compatibility</h3><p>Native packages, Flatpak, AppImage, and optional installers are coordinated without inventing another package ecosystem.</p></div>
+        </article>
+        <article>
+          <img src="assets/icons/workspaces.png" width="72" height="72" alt="">
+          <div><h3>Desktop workflow</h3><p>Four workspaces, task switching, desktop icons, context menus, keyboard shortcuts, and a proper system tray.</p></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section platform" id="platform" aria-labelledby="platform-title">
+      <div class="section-heading light">
+        <p class="section-number">02 / PLATFORM</p>
+        <h2 id="platform-title">Custom experience. Proven foundation.</h2>
+        <p>Aurora owns the desktop surface while mature Linux components keep hardware and applications compatible.</p>
+      </div>
+
+      <div class="stack-diagram" aria-label="AuroraOS system architecture from applications to hardware">
+        <div class="stack-layer aurora-layer"><strong>Aurora applications</strong><span>Explorer · Settings · Package Center · Terminal · Pi Tools</span></div>
+        <div class="stack-layer aurora-layer"><strong>Aurora shell + compositor</strong><span>Desktop · Start · Taskbar · Windows · Notifications</span></div>
+        <div class="stack-layer service-layer"><strong>Linux desktop services</strong><span>Wayland · systemd · PipeWire · NetworkManager</span></div>
+        <div class="stack-layer kernel-layer"><strong>Linux kernel + hardware</strong><span>Mesa · DRM/KMS · Input · Storage · Networking</span></div>
+      </div>
+
+      <div class="principles">
+        <div><b>01</b><h3>Compatibility first</h3><p>Run established Linux applications instead of rebuilding mature tools for appearance alone.</p></div>
+        <div><b>02</b><h3>Fast by default</h3><p>Keep the boot path short, background work deliberate, and desktop behavior responsive on modest hardware.</p></div>
+        <div><b>03</b><h3>Modular ownership</h3><p>Separate shell, compositor, settings, packages, and privileged hardware services behind clear boundaries.</p></div>
+        <div><b>04</b><h3>Visible state</h3><p>Prefer explicit controls, readable hierarchy, and predictable interaction over hidden gestures and decorative motion.</p></div>
+      </div>
+    </section>
+
+    <section class="section pi-section" id="raspberry-pi" aria-labelledby="pi-title">
+      <div class="pi-copy">
+        <p class="section-number">03 / RASPBERRY PI</p>
+        <h2 id="pi-title">A first-class Pi workstation.</h2>
+        <p>Raspberry Pi 4 and 5 are product targets, not afterthoughts. Aurora surfaces the hardware developers actually use while keeping privileged access outside the desktop process.</p>
+        <ul class="check-list">
+          <li>GPIO manager and event-driven pin state</li>
+          <li>Camera, UART, SPI, and I²C tools</li>
+          <li>CPU/GPU monitor and fan control</li>
+          <li>DBus and polkit security boundaries</li>
+        </ul>
+      </div>
+      <div class="pi-console" aria-label="Aurora Pi Tools preview">
+        <div class="screen-titlebar"><img src="assets/icons/pi-tools.png" width="24" height="24" alt=""><span>Aurora Pi Tools</span><span class="window-controls" aria-hidden="true"><i>_</i><i>□</i><i>×</i></span></div>
+        <div class="pi-console-body">
+          <div class="device-row"><img src="assets/icons/pi-tools.png" alt=""><span><b>GPIO Manager</b><small>26 pins available</small></span><em>READY</em></div>
+          <div class="device-row"><img src="assets/icons/network.png" alt=""><span><b>I²C Bus</b><small>/dev/i2c-1</small></span><em>ONLINE</em></div>
+          <div class="meter-row"><span>CPU</span><div><i style="width: 18%"></i></div><b>18%</b></div>
+          <div class="meter-row"><span>RAM</span><div><i style="width: 41%"></i></div><b>41%</b></div>
+          <div class="meter-row"><span>TEMP</span><div><i style="width: 53%"></i></div><b>53°C</b></div>
+          <p class="console-status">aurora-pi-hardwared · connected</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section status-section" id="status" aria-labelledby="status-title">
+      <div class="section-heading">
+        <p class="section-number">04 / PROJECT STATUS</p>
+        <h2 id="status-title">An honest development preview.</h2>
+        <p>The complete interaction loop runs in QEMU today. The persistent production image and custom Wayland session remain active engineering work.</p>
+      </div>
+      <div class="status-table" role="table" aria-label="AuroraOS implementation status">
+        <div class="status-row header-row" role="row"><span role="columnheader">Subsystem</span><span role="columnheader">Preview today</span><span role="columnheader">Production direction</span></div>
+        <div class="status-row" role="row"><b role="cell">Kernel</b><span role="cell">Linux 6.18</span><span role="cell">Linux</span></div>
+        <div class="status-row" role="row"><b role="cell">Desktop</b><span role="cell"><i class="tag working">WORKING</i> Xorg + JWM</span><span role="cell">Aurora Wayland compositor</span></div>
+        <div class="status-row" role="row"><b role="cell">Applications</b><span role="cell"><i class="tag working">WORKING</i> Firefox + VSCodium</span><span role="cell">Native + Flatpak + AppImage</span></div>
+        <div class="status-row" role="row"><b role="cell">Persistence</b><span role="cell"><i class="tag planned">RAM PREVIEW</i></span><span role="cell">Installed root filesystem</span></div>
+        <div class="status-row" role="row"><b role="cell">Raspberry Pi</b><span role="cell"><i class="tag planned">IN PROGRESS</i></span><span role="cell">Pi 4 and Pi 5 images</span></div>
+      </div>
+    </section>
+
+    <section class="section run-section" id="run" aria-labelledby="run-title">
+      <div class="run-copy">
+        <p class="section-number">05 / TRY IT</p>
+        <h2 id="run-title">Boot AuroraOS 98.</h2>
+        <p>The fastest current route is the hardware-accelerated ARM64 QEMU image on Apple Silicon. Build products stay local and are not committed to Git.</p>
+        <div class="requirements"><span>macOS or Linux</span><span>Python 3</span><span>QEMU</span><span>6 GB VM RAM</span></div>
+      </div>
+      <div class="command-window">
+          <div class="screen-titlebar"><img src="assets/icons/terminal.png" width="24" height="24" alt=""><span>Aurora Terminal - Quick start</span><span class="window-controls" aria-hidden="true"><i>_</i><i>□</i><i>×</i></span></div>
+        <div class="command-body">
+          <p><span>$</span> brew install qemu lz4 libarchive</p>
+          <p><span>$</span> make firefox-qemu-arm64</p>
+          <p><span>$</span> make run-fast-qemu</p>
+          <button class="copy-button bevel" type="button" data-copy="brew install qemu lz4 libarchive&#10;make firefox-qemu-arm64&#10;make run-fast-qemu"><span aria-hidden="true">▣</span> Copy commands</button>
+        </div>
+        <div class="command-status"><span class="status-light"></span> Apple Silicon / ARM64 / HVF</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-brand"><img src="assets/icons/computer.png" width="40" height="40" alt=""><strong>AuroraOS 98</strong></div>
+    <p>Experimental Linux operating system for Raspberry Pi and PCs.</p>
+    <div class="footer-links"><a href="https://github.com/Abd196-bit/AuroraOS-98">GitHub</a><a href="https://github.com/Abd196-bit/AuroraOS-98/blob/main/README.md">Documentation</a><a href="https://github.com/Abd196-bit/AuroraOS-98/blob/main/LICENSE">GPL-3.0+</a></div>
+    <small>© <span data-year></span> AuroraOS contributors. Third-party software retains its own licenses.</small>
+  </footer>
+</body>
+</html>

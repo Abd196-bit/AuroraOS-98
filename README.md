@@ -46,6 +46,21 @@ Settings is a native graphical application with System, Network & Wi-Fi, Sound, 
 
 ![Aurora Settings](docs/screenshots/settings.png)
 
+## Project website
+
+The static AuroraOS 98 project website lives in [`website/`](website/). It uses
+the real QEMU screenshots and original repository assets, with no JavaScript
+framework or build dependency.
+
+Preview it locally with:
+
+```sh
+python3 -m http.server 8765 --directory website
+```
+
+Then open `http://127.0.0.1:8765`. The directory can also be deployed directly
+to GitHub Pages or any static web host.
+
 ## Run it
 
 ### Fast start on Apple Silicon
