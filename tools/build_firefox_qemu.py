@@ -1488,8 +1488,8 @@ PY
         """#!/bin/sh
 archive="$1"
 [ -f "$archive" ] || exit 1
-if command -v xarchiver >/dev/null 2>&1; then
-  exec xarchiver "$archive"
+if command -v aurora-archive-manager >/dev/null 2>&1; then
+  exec aurora-archive-manager "$archive"
 fi
 xmessage -center -title "Archive Manager" "Archive support is unavailable in this image." 2>/dev/null || true
 """,
@@ -2363,6 +2363,8 @@ exec /usr/bin/aurora-control-center {mode}
   <Key key="F9">exec:/usr/bin/aurora-launch-settings</Key>
   <Key key="F7">exec:/usr/bin/aurora-launch-firefox</Key>
   <Key key="F6">exec:/usr/bin/aurora-launch-archive-manager</Key>
+  <Key key="F5">exec:/usr/bin/aurora-launch-explorer /tmp/firefox-home/Downloads</Key>
+  <Key key="F4">exec:/usr/bin/aurora-launch-terminal</Key>
   <ButtonClose>X</ButtonClose>
   <ButtonMax>□</ButtonMax>
   <ButtonMin>_</ButtonMin>
@@ -2442,6 +2444,9 @@ def configure_rootfs(packages: list[dict] | None = None) -> None:
         write_apk_database(packages)
     register_vscodium_flac_compat()
     write_app_surface()
+    archive_manager = ROOTFS / "usr" / "bin" / "aurora-archive-manager"
+    shutil.copy2(ROOT / "src" / "aurora-explorer" / "archive_manager.py", archive_manager)
+    archive_manager.chmod(0o755)
     write_file(
         "/etc/apk/repositories",
         """https://dl-cdn.alpinelinux.org/alpine/edge/main

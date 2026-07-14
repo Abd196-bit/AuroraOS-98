@@ -6,6 +6,8 @@ AURORA_QEMU_HEIGHT ?= 900
 AURORA_QEMU_REFRESH ?= 60
 AURORA_QEMU_CPUS ?= 4
 AURORA_QEMU_ACCEL ?= tcg,thread=multi
+AURORA_QEMU_MONITOR ?= /tmp/aurora-qemu-monitor.sock
+AURORA_QEMU_QMP ?= /tmp/aurora-qemu-qmp.sock
 
 .PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi4-image pi5-image clean
 
@@ -88,6 +90,7 @@ run-firefox-qemu:
 		-serial stdio
 
 run-firefox-qemu-arm64:
+	@rm -f "$(AURORA_QEMU_MONITOR)" "$(AURORA_QEMU_QMP)"
 	qemu-system-aarch64 -m 6144M \
 		-machine virt,accel=hvf \
 		-cpu host \
@@ -104,7 +107,8 @@ run-firefox-qemu-arm64:
 		-netdev user,id=net0 \
 		-device virtio-net-pci,netdev=net0 \
 		-display cocoa \
-		-monitor none \
+		-monitor unix:"$(AURORA_QEMU_MONITOR)",server=on,wait=off \
+		-qmp unix:"$(AURORA_QEMU_QMP)",server=on,wait=off \
 		-serial none
 
 run-fast-qemu: run-firefox-qemu-arm64
