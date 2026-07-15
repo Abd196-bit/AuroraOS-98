@@ -5,6 +5,7 @@ import argparse
 import gzip
 import hashlib
 import os
+import re
 import shutil
 import stat
 import struct
@@ -30,7 +31,10 @@ ALPINE_MAIN = f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/main/aarch
 BASE_NAME = f"alpine-rpi-{ALPINE_VERSION}-aarch64.img.gz"
 OUTPUT_NAME = "AuroraOS-98-Pi4-Pi5-test-0.1.img"
 OUTPUT_800X480_NAME = "AuroraOS-98-Pi4-Pi5-test-0.3-800x480.img"
-IMAGE_SIZE = 1536 * 1024 * 1024
+QEMU_SMOKE_INITRAMFS = "aurora-initramfs-rpi-qemu-smoke.lz4"
+QEMU_ROOT_IMAGE = "aurora-pi-qemu-root.ext4"
+QEMU_ROOT_SIZE = 1024 * 1024 * 1024
+IMAGE_SIZE = 2048 * 1024 * 1024
 PARTITION_START = 2048
 SECTOR_SIZE = 512
 REQUIRED_PACKAGES = (
@@ -38,6 +42,14 @@ REQUIRED_PACKAGES = (
     "linux-firmware-brcm",
     "linux-firmware-cypress",
     "linux-firmware-synaptics",
+)
+QEMU_SMOKE_SKIP_PREFIXES = (
+    "usr/lib/wine",
+    "usr/lib/vscodium",
+    "usr/lib/electron",
+    "usr/lib/firefox-esr",
+    "usr/lib/libLLVM.so",
+    "usr/lib/libgallium-",
 )
 
 
@@ -154,10 +166,22 @@ def normalize_modules(modules: Path) -> None:
         metadata.write_text(text.replace(".ko.gz", ".ko"))
 
 
-def modify_init(data: bytes, display_800x480: bool) -> bytes:
+def modify_init(data: bytes, display_800x480: bool, qemu_smoke: bool) -> bytes:
     text = data.decode()
+    if qemu_smoke:
+        path_setup = "export PATH=/sbin:/bin:/usr/sbin:/usr/bin\n"
+        if path_setup not in text:
+            raise RuntimeError("could not locate PATH setup in Aurora init")
+        text = text.replace(path_setup, path_setup + "mount -o remount,rw / 2>/dev/null || true\n", 1)
     anchor = "modprobe bochs >/dev/console 2>&1 || true\n"
-    pi_setup = """# AuroraOS Raspberry Pi hardware test
+    if qemu_smoke:
+        pi_setup = """# AuroraOS Raspberry Pi QEMU framebuffer profile
+mdev -s 2>/dev/null || true
+sed -i 's/Driver "modesetting"/Driver "fbdev"/' /etc/X11/xorg.conf
+sed -i 's/^[[:space:]]*Modes .*/        Modes "800x480"/' /etc/X11/xorg.conf
+"""
+    else:
+        pi_setup = """# AuroraOS Raspberry Pi hardware test
 for module in drm drm_kms_helper vc4 v3d bcm2835_dma bcm2835_codec bcm2835_isp bcmgenet macb brcmfmac cfg80211 snd_bcm2835 raspberrypi_hwmon; do
     modprobe "$module" >/dev/console 2>&1 || true
 done
@@ -170,7 +194,7 @@ done
 """
     if anchor not in text:
         raise RuntimeError("could not locate module setup in Aurora init")
-    if display_800x480:
+    if display_800x480 and not qemu_smoke:
         pi_setup += """# Do not let the inherited QEMU Xorg profile select 1440x900.
 sed -i 's/^[[:space:]]*Modes .*/        Modes "800x480"/' /etc/X11/xorg.conf
 """
@@ -244,7 +268,12 @@ def overlay_paths(root: Path) -> list[Path]:
     return sorted(selected, key=lambda path: (len(path.relative_to(root).parts), str(path.relative_to(root))))
 
 
-def build_pi_initramfs(pi_root: Path, output: Path, display_800x480: bool) -> None:
+def build_pi_initramfs(
+    pi_root: Path,
+    output: Path,
+    display_800x480: bool,
+    qemu_smoke: bool = False,
+) -> None:
     if not QEMU_INITRAMFS.exists():
         raise RuntimeError("ARM64 Aurora QEMU initramfs is missing; run make firefox-qemu-arm64 first")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -269,7 +298,15 @@ def build_pi_initramfs(pi_root: Path, output: Path, display_800x480: bool) -> No
             name_padding = read_exact(source, (4 - ((110 + name_size) % 4)) % 4)
             if name == "TRAILER!!!":
                 break
-            skip = name == "./init" or name == "init" or name.startswith("./lib/modules/") or name == "./lib/modules"
+            normalized_name = name.removeprefix("./")
+            smoke_skip = qemu_smoke and normalized_name.startswith(QEMU_SMOKE_SKIP_PREFIXES)
+            skip = (
+                name == "./init"
+                or name == "init"
+                or name.startswith("./lib/modules/")
+                or name == "./lib/modules"
+                or smoke_skip
+            )
             capture_init = name in ("./init", "init")
             if not skip:
                 target.write(header)
@@ -292,7 +329,7 @@ def build_pi_initramfs(pi_root: Path, output: Path, display_800x480: bool) -> No
             target,
             "./init",
             stat.S_IFREG | 0o755,
-            modify_init(init_data, display_800x480),
+            modify_init(init_data, display_800x480, qemu_smoke),
             inode,
         )
         inode += 1
@@ -428,6 +465,82 @@ def clean_precompression_intermediates(base: Path, initramfs: Path) -> None:
     shutil.rmtree(PACKAGE_ROOT, ignore_errors=True)
 
 
+def e2fs_tool(name: str) -> str:
+    discovered = shutil.which(name)
+    if discovered:
+        return discovered
+    homebrew = Path("/opt/homebrew/opt/e2fsprogs/sbin") / name
+    if homebrew.exists():
+        return str(homebrew)
+    raise RuntimeError(f"missing {name}; on macOS run: brew install e2fsprogs")
+
+
+def prepare_qemu_smoke_boot_files(base: Path) -> Path:
+    destination = BUILD / "qemu-raspi4"
+    destination.mkdir(parents=True, exist_ok=True)
+    source = f"{base}@@{PARTITION_START * SECTOR_SIZE}"
+    for guest, host in (
+        ("::boot/vmlinuz-rpi", "vmlinuz-rpi"),
+        ("::bcm2711-rpi-4-b.dtb", "bcm2711-rpi-4-b.dtb"),
+        ("::boot/initramfs-rpi", "initramfs-rpi"),
+    ):
+        run(["mcopy", "-o", "-i", source, guest, str(destination / host)])
+    return destination
+
+
+def prepare_qemu_device_tree(destination: Path) -> None:
+    original = destination / "bcm2711-rpi-4-b.dtb"
+    effective = destination / "bcm2711-rpi-4-b-effective.dtb"
+    source = destination / "bcm2711-rpi-4-b-qemu.dts"
+    output = destination / "bcm2711-rpi-4-b-qemu.dtb"
+    run([
+        "qemu-system-aarch64",
+        "-M", f"raspi4b,dumpdtb={effective}",
+        "-m", "2G",
+        "-kernel", str(destination / "vmlinuz-rpi"),
+        "-dtb", str(original),
+        "-display", "none",
+    ])
+    result = run(["dtc", "-q", "-I", "dtb", "-O", "dts", str(effective)], capture_output=True, text=True)
+    text = result.stdout
+    usb_pattern = r'(usb: usb@7e980000 \{.*?)(\n\s*power-domains = <[^;]+>;)(.*?\n\s*status = )"disabled";'
+    text, usb_changes = re.subn(usb_pattern, r'\1\3"okay";', text, count=1, flags=re.DOTALL)
+    emmc_pattern = (
+        r'(emmc2: mmc@7e340000 \{.*?)'
+        r'(\n\s*vqmmc-supply = <[^;]+>;\n\s*vmmc-supply = <[^;]+>;)'
+    )
+    text, emmc_changes = re.subn(emmc_pattern, r'\1', text, count=1, flags=re.DOTALL)
+    if usb_changes != 1 or emmc_changes != 1:
+        raise RuntimeError("could not adapt the Raspberry Pi device tree for QEMU")
+    source.write_text(text)
+    run(["dtc", "-q", "-I", "dts", "-O", "dtb", "-o", str(output), str(source)])
+
+
+def build_qemu_root(initramfs: Path, destination: Path) -> Path:
+    root = BUILD / "qemu-root"
+    image = BUILD / QEMU_ROOT_IMAGE
+    shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True)
+    decompressor = subprocess.Popen(["lz4", "-dc", str(initramfs)], stdout=subprocess.PIPE)
+    assert decompressor.stdout is not None
+    run(["bsdtar", "-xf", "-", "-C", str(root)], stdin=decompressor.stdout)
+    decompressor.stdout.close()
+    if decompressor.wait() != 0:
+        raise RuntimeError("failed to extract Raspberry Pi QEMU root filesystem")
+    (root / "sbin").mkdir(parents=True, exist_ok=True)
+    init_link = root / "sbin" / "init"
+    init_link.unlink(missing_ok=True)
+    init_link.symlink_to("/init")
+    image.unlink(missing_ok=True)
+    with image.open("wb") as target:
+        target.truncate(QEMU_ROOT_SIZE)
+    run([e2fs_tool("mke2fs"), "-q", "-t", "ext4", "-F", "-L", "AURORA_ROOT", "-d", str(root), str(image)])
+    run([e2fs_tool("e2fsck"), "-fn", str(image)])
+    prepare_qemu_device_tree(destination)
+    shutil.rmtree(root, ignore_errors=True)
+    return image
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the experimental AuroraOS Raspberry Pi 4/5 SD image")
     parser.add_argument("--keep-intermediates", action="store_true")
@@ -436,11 +549,28 @@ def main() -> int:
         action="store_true",
         help="force a generic 5-inch 800x480 HDMI panel connected to HDMI0",
     )
+    parser.add_argument(
+        "--qemu-smoke",
+        action="store_true",
+        help="build a reduced Pi 4 initramfs that fits QEMU's emulated RAM",
+    )
     args = parser.parse_args()
     require_tools()
     BUILD.mkdir(parents=True, exist_ok=True)
     base = ensure_base_image()
     pi_root = prepare_pi_files()
+    if args.qemu_smoke:
+        initramfs = BUILD / QEMU_SMOKE_INITRAMFS
+        build_pi_initramfs(pi_root, initramfs, True, qemu_smoke=True)
+        run(["lz4", "-t", str(initramfs)])
+        qemu_files = prepare_qemu_smoke_boot_files(base)
+        root_image = build_qemu_root(initramfs, qemu_files)
+        initramfs.unlink(missing_ok=True)
+        if not args.keep_intermediates:
+            base.unlink(missing_ok=True)
+            shutil.rmtree(PACKAGE_ROOT, ignore_errors=True)
+        print(f"Raspberry Pi QEMU virtual SD root: {root_image}")
+        return 0
     initramfs = BUILD / "aurora-initramfs-rpi.lz4"
     image = BUILD / (OUTPUT_800X480_NAME if args.display_800x480 else OUTPUT_NAME)
     build_pi_initramfs(pi_root, initramfs, args.display_800x480)

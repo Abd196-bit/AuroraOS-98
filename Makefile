@@ -9,7 +9,7 @@ AURORA_QEMU_ACCEL ?= tcg,thread=multi
 AURORA_QEMU_MONITOR ?= /tmp/aurora-qemu-monitor.sock
 AURORA_QEMU_QMP ?= /tmp/aurora-qemu-qmp.sock
 
-.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu run-firefox-qemu-linux firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi-test-image pi-test-image-800x480 pi4-image pi5-image clean
+.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu run-firefox-qemu-linux firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi-test-image pi-test-image-800x480 pi-qemu-smoke run-pi-qemu-smoke pi4-image pi5-image clean
 
 all: check native rootfs
 
@@ -147,6 +147,21 @@ pi-test-image:
 
 pi-test-image-800x480:
 	python3 tools/build_raspberry_pi_image.py --display-800x480
+
+pi-qemu-smoke:
+	python3 tools/build_raspberry_pi_image.py --qemu-smoke
+
+run-pi-qemu-smoke: pi-qemu-smoke
+	qemu-system-aarch64 -M raspi4b -m 2G \
+		-kernel build/raspberry-pi/qemu-raspi4/vmlinuz-rpi \
+		-dtb build/raspberry-pi/qemu-raspi4/bcm2711-rpi-4-b-qemu.dtb \
+		-initrd build/raspberry-pi/qemu-raspi4/initramfs-rpi \
+		-drive file=build/raspberry-pi/aurora-pi-qemu-root.ext4,if=sd,format=raw \
+		-append "root=LABEL=AURORA_ROOT rootfstype=ext4 rw rootwait modules=sdhci-iproc,sd-mod,ext4 console=ttyAMA1,115200 console=tty1 loglevel=5 earlycon=pl011,0xfe201000 video=HDMI-A-1:800x480@60" \
+		-device usb-kbd \
+		-device usb-tablet \
+		-display cocoa \
+		-serial stdio
 
 pi4-image: pi-test-image
 

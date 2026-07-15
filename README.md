@@ -173,6 +173,24 @@ or build it with `make pi-test-image-800x480`. This variant disables the legacy
 firmware mode, forces the current KMS kernel display setting, and prevents Xorg
 from switching back to the QEMU preview's 1440×900 mode.
 
+### Emulate a Raspberry Pi 4
+
+This target runs the ARM64 build on QEMU's real `raspi4b` machine model with a
+2 GB Pi 4, an 800×480 framebuffer, USB keyboard and tablet input, Alpine's small
+hardware initramfs, and a persistent ext4 virtual SD root:
+
+```sh
+brew install qemu lz4 libarchive mtools e2fsprogs dtc
+make firefox-qemu-arm64
+make run-pi-qemu-smoke
+```
+
+The first build takes longer because it constructs the reduced Pi root. Later
+runs can start the already-built VM directly with the QEMU command printed by
+`make -n run-pi-qemu-smoke`. The Pi emulator is intended for display, input,
+boot, and shell testing; use the standard ARM64 QEMU preview for internet and
+full application testing.
+
 ### VM controls
 
 - Click inside the QEMU window to use the mouse and keyboard.
