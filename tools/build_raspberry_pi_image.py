@@ -29,7 +29,7 @@ ALPINE_RELEASE_BASE = f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/re
 ALPINE_MAIN = f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/main/aarch64"
 BASE_NAME = f"alpine-rpi-{ALPINE_VERSION}-aarch64.img.gz"
 OUTPUT_NAME = "AuroraOS-98-Pi4-Pi5-test-0.1.img"
-OUTPUT_800X480_NAME = "AuroraOS-98-Pi4-Pi5-test-0.2-800x480.img"
+OUTPUT_800X480_NAME = "AuroraOS-98-Pi4-Pi5-test-0.3-800x480.img"
 IMAGE_SIZE = 1536 * 1024 * 1024
 PARTITION_START = 2048
 SECTOR_SIZE = 512
@@ -154,7 +154,7 @@ def normalize_modules(modules: Path) -> None:
         metadata.write_text(text.replace(".ko.gz", ".ko"))
 
 
-def modify_init(data: bytes) -> bytes:
+def modify_init(data: bytes, display_800x480: bool) -> bytes:
     text = data.decode()
     anchor = "modprobe bochs >/dev/console 2>&1 || true\n"
     pi_setup = """# AuroraOS Raspberry Pi hardware test
@@ -170,6 +170,14 @@ done
 """
     if anchor not in text:
         raise RuntimeError("could not locate module setup in Aurora init")
+    if display_800x480:
+        pi_setup += """# Do not let the inherited QEMU Xorg profile select 1440x900.
+sed -i 's/^[[:space:]]*Modes .*/        Modes "800x480"/' /etc/X11/xorg.conf
+"""
+    else:
+        pi_setup += """# Let KMS and the monitor EDID choose the Pi display mode.
+sed -i '/^[[:space:]]*Modes /d' /etc/X11/xorg.conf
+"""
     text = text.replace(anchor, pi_setup + anchor, 1)
     text = text.replace(
         "printf 'nameserver 10.0.2.3\\nnameserver 1.1.1.1\\n' >/etc/resolv.conf",
@@ -236,7 +244,7 @@ def overlay_paths(root: Path) -> list[Path]:
     return sorted(selected, key=lambda path: (len(path.relative_to(root).parts), str(path.relative_to(root))))
 
 
-def build_pi_initramfs(pi_root: Path, output: Path) -> None:
+def build_pi_initramfs(pi_root: Path, output: Path, display_800x480: bool) -> None:
     if not QEMU_INITRAMFS.exists():
         raise RuntimeError("ARM64 Aurora QEMU initramfs is missing; run make firefox-qemu-arm64 first")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -280,7 +288,13 @@ def build_pi_initramfs(pi_root: Path, output: Path) -> None:
         if init_data is None:
             raise RuntimeError("Aurora initramfs did not contain /init")
         inode = 0x70000000
-        write_newc_entry(target, "./init", stat.S_IFREG | 0o755, modify_init(init_data), inode)
+        write_newc_entry(
+            target,
+            "./init",
+            stat.S_IFREG | 0o755,
+            modify_init(init_data, display_800x480),
+            inode,
+        )
         inode += 1
         for path in overlay_paths(pi_root):
             relative = path.relative_to(pi_root)
@@ -429,7 +443,7 @@ def main() -> int:
     pi_root = prepare_pi_files()
     initramfs = BUILD / "aurora-initramfs-rpi.lz4"
     image = BUILD / (OUTPUT_800X480_NAME if args.display_800x480 else OUTPUT_NAME)
-    build_pi_initramfs(pi_root, initramfs)
+    build_pi_initramfs(pi_root, initramfs, args.display_800x480)
     run(["lz4", "-t", str(initramfs)])
     assemble_image(base, initramfs, image, args.display_800x480)
     if not args.keep_intermediates:

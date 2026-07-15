@@ -39,7 +39,8 @@ make pi-test-image-800x480
 
 This profile disables the firmware splash and firmware-selected display mode,
 then forces the current KMS setting `video=HDMI-A-1:800x480M@60D` from
-`cmdline.txt`. It also enables verbose kernel boot output for hardware diagnosis.
+`cmdline.txt`. It also replaces the inherited QEMU Xorg mode list with an
+800x480-only mode and enables verbose kernel boot output for hardware diagnosis.
 Connect the display to the port labelled HDMI0. Use the standard image for
 displays that provide a working EDID.
 

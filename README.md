@@ -168,9 +168,10 @@ make pi-test-image
 ```
 
 For a generic 5-inch 800×480 HDMI panel connected to HDMI0, download the
-[800×480 diagnostic image](https://github.com/Abd196-bit/AuroraOS-98/releases/download/pi-test-0.2/AuroraOS-98-Pi4-Pi5-test-0.2-800x480.img.xz)
+[800×480 diagnostic image](https://github.com/Abd196-bit/AuroraOS-98/releases/download/pi-test-0.3/AuroraOS-98-Pi4-Pi5-test-0.3-800x480.img.xz)
 or build it with `make pi-test-image-800x480`. This variant disables the legacy
-firmware mode and forces the current KMS kernel display setting with boot logs.
+firmware mode, forces the current KMS kernel display setting, and prevents Xorg
+from switching back to the QEMU preview's 1440×900 mode.
 
 ### VM controls
 
