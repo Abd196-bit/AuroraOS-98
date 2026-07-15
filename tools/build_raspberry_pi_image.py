@@ -29,7 +29,7 @@ ALPINE_RELEASE_BASE = f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/re
 ALPINE_MAIN = f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/main/aarch64"
 BASE_NAME = f"alpine-rpi-{ALPINE_VERSION}-aarch64.img.gz"
 OUTPUT_NAME = "AuroraOS-98-Pi4-Pi5-test-0.1.img"
-OUTPUT_800X480_NAME = "AuroraOS-98-Pi4-Pi5-test-0.1-800x480.img"
+OUTPUT_800X480_NAME = "AuroraOS-98-Pi4-Pi5-test-0.2-800x480.img"
 IMAGE_SIZE = 1536 * 1024 * 1024
 PARTITION_START = 2048
 SECTOR_SIZE = 512
@@ -363,14 +363,14 @@ def assemble_image(base: Path, initramfs: Path, output: Path, display_800x480: b
         cmdline = "console=tty1 quiet loglevel=4 vt.global_cursor_default=0"
         if display_800x480:
             usercfg += (
-                "# Generic 5-inch 800x480 HDMI panel on the HDMI0 port\n"
-                "hdmi_force_hotplug=1\n"
-                "hdmi_group=2\n"
-                "hdmi_mode=87\n"
-                "hdmi_cvt=800 480 60 6 0 0 0\n"
-                "hdmi_drive=2\n"
+                "# KMS controls the generic 5-inch HDMI0 panel\n"
+                "disable_splash=1\n"
+                "disable_fw_kms_setup=1\n"
             )
-            cmdline += " video=HDMI-A-1:800x480M@60D"
+            cmdline = (
+                "console=tty1 loglevel=7 ignore_loglevel earlycon "
+                "video=HDMI-A-1:800x480M@60D"
+            )
         (temp / "usercfg.txt").write_text(usercfg)
         (temp / "cmdline.txt").write_text(cmdline + "\n")
         display_profile = (

@@ -37,10 +37,11 @@ Build the dedicated HDMI0 profile with:
 make pi-test-image-800x480
 ```
 
-This profile keeps the firmware-level `hdmi_cvt=800 480 60 6` settings in
-`usercfg.txt` and adds the KMS setting
-`video=HDMI-A-1:800x480M@60D` to `cmdline.txt`. Connect the display to the port
-labelled HDMI0. Use the standard image for displays that provide a working EDID.
+This profile disables the firmware splash and firmware-selected display mode,
+then forces the current KMS setting `video=HDMI-A-1:800x480M@60D` from
+`cmdline.txt`. It also enables verbose kernel boot output for hardware diagnosis.
+Connect the display to the port labelled HDMI0. Use the standard image for
+displays that provide a working EDID.
 
 ## Pi Tools
 
