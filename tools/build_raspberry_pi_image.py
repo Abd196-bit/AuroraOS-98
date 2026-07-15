@@ -29,6 +29,7 @@ ALPINE_RELEASE_BASE = f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/re
 ALPINE_MAIN = f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/main/aarch64"
 BASE_NAME = f"alpine-rpi-{ALPINE_VERSION}-aarch64.img.gz"
 OUTPUT_NAME = "AuroraOS-98-Pi4-Pi5-test-0.1.img"
+OUTPUT_800X480_NAME = "AuroraOS-98-Pi4-Pi5-test-0.1-800x480.img"
 IMAGE_SIZE = 1536 * 1024 * 1024
 PARTITION_START = 2048
 SECTOR_SIZE = 512
@@ -338,7 +339,7 @@ def mtools_environment(base: Path, image: Path, directory: Path) -> dict[str, st
     return environment
 
 
-def assemble_image(base: Path, initramfs: Path, output: Path) -> None:
+def assemble_image(base: Path, initramfs: Path, output: Path, display_800x480: bool) -> None:
     write_mbr(output)
     offset = PARTITION_START * SECTOR_SIZE
     run(["mformat", "-i", f"{output}@@{offset}", "-F", "-v", "AURORA_PI", "::"])
@@ -349,7 +350,7 @@ def assemble_image(base: Path, initramfs: Path, output: Path) -> None:
         run(["mdel", "b:/boot/initramfs-rpi"], env=environment)
         run(["mcopy", "-o", str(initramfs), "b:/boot/initramfs-rpi"], env=environment)
 
-        (temp / "usercfg.txt").write_text(
+        usercfg = (
             "# AuroraOS 98 Raspberry Pi hardware test\n"
             "disable_overscan=1\n"
             "max_framebuffers=2\n"
@@ -359,14 +360,32 @@ def assemble_image(base: Path, initramfs: Path, output: Path) -> None:
             "dtoverlay=vc4-kms-v3d-pi5\n"
             "[all]\n"
         )
-        (temp / "cmdline.txt").write_text("console=tty1 quiet loglevel=4 vt.global_cursor_default=0\n")
+        cmdline = "console=tty1 quiet loglevel=4 vt.global_cursor_default=0"
+        if display_800x480:
+            usercfg += (
+                "# Generic 5-inch 800x480 HDMI panel on the HDMI0 port\n"
+                "hdmi_force_hotplug=1\n"
+                "hdmi_group=2\n"
+                "hdmi_mode=87\n"
+                "hdmi_cvt=800 480 60 6 0 0 0\n"
+                "hdmi_drive=2\n"
+            )
+            cmdline += " video=HDMI-A-1:800x480M@60D"
+        (temp / "usercfg.txt").write_text(usercfg)
+        (temp / "cmdline.txt").write_text(cmdline + "\n")
+        display_profile = (
+            "Display profile: forced 800x480 at 60 Hz on HDMI0.\r\n"
+            if display_800x480
+            else "Display profile: automatic HDMI detection.\r\n"
+        )
         (temp / "README-PI.txt").write_text(
             "AuroraOS 98 Raspberry Pi hardware test 0.1\r\n"
             "================================================\r\n"
             "Target: Raspberry Pi 4 or Pi 5 with 4 GB RAM or more.\r\n"
             "This is an experimental RAM-based desktop image. Changes do not persist.\r\n"
             "Ethernet is recommended for the first test.\r\n"
-            "If the GUI fails, connect a display and keyboard and record the console error.\r\n"
+            + display_profile
+            + "If the GUI fails, connect a display and keyboard and record the console error.\r\n"
         )
         for filename in ("usercfg.txt", "cmdline.txt", "README-PI.txt"):
             run(["mcopy", "-o", str(temp / filename), f"b:/{filename}"], env=environment)
@@ -398,16 +417,21 @@ def clean_precompression_intermediates(base: Path, initramfs: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the experimental AuroraOS Raspberry Pi 4/5 SD image")
     parser.add_argument("--keep-intermediates", action="store_true")
+    parser.add_argument(
+        "--display-800x480",
+        action="store_true",
+        help="force a generic 5-inch 800x480 HDMI panel connected to HDMI0",
+    )
     args = parser.parse_args()
     require_tools()
     BUILD.mkdir(parents=True, exist_ok=True)
     base = ensure_base_image()
     pi_root = prepare_pi_files()
     initramfs = BUILD / "aurora-initramfs-rpi.lz4"
-    image = BUILD / OUTPUT_NAME
+    image = BUILD / (OUTPUT_800X480_NAME if args.display_800x480 else OUTPUT_NAME)
     build_pi_initramfs(pi_root, initramfs)
     run(["lz4", "-t", str(initramfs)])
-    assemble_image(base, initramfs, image)
+    assemble_image(base, initramfs, image, args.display_800x480)
     if not args.keep_intermediates:
         clean_precompression_intermediates(base, initramfs)
     compressed = compress_image(image)

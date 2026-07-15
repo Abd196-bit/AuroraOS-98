@@ -9,7 +9,7 @@ AURORA_QEMU_ACCEL ?= tcg,thread=multi
 AURORA_QEMU_MONITOR ?= /tmp/aurora-qemu-monitor.sock
 AURORA_QEMU_QMP ?= /tmp/aurora-qemu-qmp.sock
 
-.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu run-firefox-qemu-linux firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi-test-image pi4-image pi5-image clean
+.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu run-firefox-qemu-linux firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi-test-image pi-test-image-800x480 pi4-image pi5-image clean
 
 all: check native rootfs
 
@@ -144,6 +144,9 @@ open-qemu:
 
 pi-test-image:
 	python3 tools/build_raspberry_pi_image.py
+
+pi-test-image-800x480:
+	python3 tools/build_raspberry_pi_image.py --display-800x480
 
 pi4-image: pi-test-image
 

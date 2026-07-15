@@ -29,6 +29,19 @@ xz -dc AuroraOS-98-Pi4-Pi5-test-0.1.img.xz | \
 Replace `/dev/sdX` with the whole microSD device. Writing to the wrong device
 will destroy its contents.
 
+### Generic 5-inch 800x480 HDMI display
+
+Build the dedicated HDMI0 profile with:
+
+```sh
+make pi-test-image-800x480
+```
+
+This profile keeps the firmware-level `hdmi_cvt=800 480 60 6` settings in
+`usercfg.txt` and adds the KMS setting
+`video=HDMI-A-1:800x480M@60D` to `cmdline.txt`. Connect the display to the port
+labelled HDMI0. Use the standard image for displays that provide a working EDID.
+
 ## Pi Tools
 
 Aurora Pi Tools provides:

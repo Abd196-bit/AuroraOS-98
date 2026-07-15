@@ -167,6 +167,11 @@ make firefox-qemu-arm64
 make pi-test-image
 ```
 
+For a generic 5-inch 800×480 HDMI panel connected to HDMI0, download the
+[800×480 image](https://github.com/Abd196-bit/AuroraOS-98/releases/download/pi-test-0.1/AuroraOS-98-Pi4-Pi5-test-0.1-800x480.img.xz)
+or build it with `make pi-test-image-800x480`. This variant includes both the
+legacy firmware CVT settings and the current KMS kernel display setting.
+
 ### VM controls
 
 - Click inside the QEMU window to use the mouse and keyboard.
