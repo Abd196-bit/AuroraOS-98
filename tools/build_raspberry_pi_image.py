@@ -25,12 +25,13 @@ QEMU_INITRAMFS = ROOT / "build" / "firefox-qemu-arm64" / "aurora-firefox-initram
 
 ALPINE_VERSION = "3.24.1"
 ALPINE_BRANCH = "v3.24"
+PI_TEST_VERSION = "0.4"
 EXPECTED_KERNEL_PACKAGE_VERSION = "6.18.35-r0"
 ALPINE_RELEASE_BASE = f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/releases/aarch64"
 ALPINE_MAIN = f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/main/aarch64"
 BASE_NAME = f"alpine-rpi-{ALPINE_VERSION}-aarch64.img.gz"
 OUTPUT_NAME = "AuroraOS-98-Pi4-Pi5-test-0.1.img"
-OUTPUT_800X480_NAME = "AuroraOS-98-Pi4-Pi5-test-0.3-800x480.img"
+OUTPUT_800X480_NAME = "AuroraOS-98-Pi4-Pi5-test-0.4-800x480-fullscreen.img"
 QEMU_SMOKE_INITRAMFS = "aurora-initramfs-rpi-qemu-smoke.lz4"
 QEMU_ROOT_IMAGE = "aurora-pi-qemu-root.ext4"
 QEMU_ROOT_SIZE = 1024 * 1024 * 1024
@@ -142,7 +143,7 @@ def prepare_pi_files() -> Path:
     marker = PACKAGE_ROOT / "etc" / "aurora" / "pi-test-build"
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(
-        "AuroraOS 98 Raspberry Pi hardware test 0.1\n"
+        f"AuroraOS 98 Raspberry Pi hardware test {PI_TEST_VERSION}\n"
         f"Alpine Linux {ALPINE_VERSION} aarch64 foundation\n"
         "Requires Raspberry Pi 4 or 5 with at least 4 GB RAM\n"
     )
@@ -168,11 +169,17 @@ def normalize_modules(modules: Path) -> None:
 
 def modify_init(data: bytes, display_800x480: bool, qemu_smoke: bool) -> bytes:
     text = data.decode()
-    if qemu_smoke:
-        path_setup = "export PATH=/sbin:/bin:/usr/sbin:/usr/bin\n"
-        if path_setup not in text:
-            raise RuntimeError("could not locate PATH setup in Aurora init")
-        text = text.replace(path_setup, path_setup + "mount -o remount,rw / 2>/dev/null || true\n", 1)
+    path_setup = "export PATH=/sbin:/bin:/usr/sbin:/usr/bin\n"
+    if path_setup not in text:
+        raise RuntimeError("could not locate PATH setup in Aurora init")
+    early_setup = "mount -o remount,rw / 2>/dev/null || true\n"
+    compact = qemu_smoke or display_800x480
+    if compact:
+        early_setup += "export AURORA_COMPACT=1\n"
+        text = text.replace("export GDK_DPI_SCALE=1.25", "export GDK_DPI_SCALE=1")
+        text = text.replace("export QT_SCALE_FACTOR=1.25", "export QT_SCALE_FACTOR=1")
+        text = text.replace("Xft.dpi: 144", "Xft.dpi: 96")
+    text = text.replace(path_setup, path_setup + early_setup, 1)
     anchor = "modprobe bochs >/dev/console 2>&1 || true\n"
     if qemu_smoke:
         pi_setup = """# AuroraOS Raspberry Pi QEMU framebuffer profile
@@ -194,7 +201,25 @@ done
 """
     if anchor not in text:
         raise RuntimeError("could not locate module setup in Aurora init")
-    if display_800x480 and not qemu_smoke:
+    if compact:
+        pi_setup += """# Fit the complete Aurora shell into an 800x480 panel.
+sed -i 's/height="82"/height="46"/; s/MS W98 UI-18/MS W98 UI-12/g; s|<Height>46</Height>|<Height>30</Height>|; s/maxwidth="620"/maxwidth="100"/' /etc/jwm/aurora.jwmrc
+sed -i '/TrayButton label="Settings"/d; /TrayButton label="Store"/d' /etc/jwm/aurora.jwmrc
+sed -i 's/FontSize: 16/FontSize: 12/; s/SnapWidth: 120/SnapWidth: 90/; s/SnapHeight: 112/SnapHeight: 90/' /usr/bin/aurora-desktop-icons
+sed -i \\
+  -e 's|180 60 /usr|90 45 /usr|' \\
+  -e 's|180 190 /usr|280 45 /usr|' \\
+  -e 's|180 320 /usr|470 45 /usr|' \\
+  -e 's|180 450 /usr|660 45 /usr|' \\
+  -e 's|180 580 /usr|90 190 /usr|' \\
+  -e 's|420 580 /usr|280 190 /usr|' \\
+  -e 's|430 60 /usr|470 190 /usr|' \\
+  -e 's|430 190 /usr|660 190 /usr|' \\
+  /usr/bin/aurora-desktop-icons
+"""
+    if qemu_smoke:
+        pass
+    elif display_800x480:
         pi_setup += """# Do not let the inherited QEMU Xorg profile select 1440x900.
 sed -i 's/^[[:space:]]*Modes .*/        Modes "800x480"/' /etc/X11/xorg.conf
 """
@@ -430,7 +455,7 @@ def assemble_image(base: Path, initramfs: Path, output: Path, display_800x480: b
             else "Display profile: automatic HDMI detection.\r\n"
         )
         (temp / "README-PI.txt").write_text(
-            "AuroraOS 98 Raspberry Pi hardware test 0.1\r\n"
+            f"AuroraOS 98 Raspberry Pi hardware test {PI_TEST_VERSION}\r\n"
             "================================================\r\n"
             "Target: Raspberry Pi 4 or Pi 5 with 4 GB RAM or more.\r\n"
             "This is an experimental RAM-based desktop image. Changes do not persist.\r\n"

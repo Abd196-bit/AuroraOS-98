@@ -1946,6 +1946,7 @@ from tkinter import filedialog, messagebox, ttk
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "settings"
 HOME = "/tmp/firefox-home"
+COMPACT = os.environ.get("AURORA_COMPACT") == "1"
 BG, PANEL, PANEL2 = "#171717", "#202020", "#292929"
 TEXT, MUTED, BLUE = "#f4f4f4", "#bdbdbd", "#0878d1"
 
@@ -1967,7 +1968,9 @@ def read(path, fallback="Unavailable"):
 def button(parent, text, command, width=None):
     widget = tk.Button(parent, text=text, command=command, bg="#343434", fg=TEXT,
                        activebackground=BLUE, activeforeground="white", bd=1,
-                       relief="solid", padx=16, pady=10, font=("MS W98 UI", 14),
+                       relief="solid", padx=8 if COMPACT else 16,
+                       pady=5 if COMPACT else 10,
+                       font=("MS W98 UI", 10 if COMPACT else 14),
                        cursor="hand2")
     if width:
         widget.configure(width=width)
@@ -1977,10 +1980,16 @@ class AuroraApp(tk.Tk):
     def __init__(self, title, size="1180x760"):
         super().__init__()
         self.title(title)
-        self.geometry(size)
-        self.minsize(920, 620)
+        if COMPACT:
+            width = self.winfo_screenwidth()
+            height = max(320, self.winfo_screenheight() - 46)
+            self.geometry(f"{width}x{height}+0+0")
+            self.minsize(640, 320)
+        else:
+            self.geometry(size)
+            self.minsize(920, 620)
         self.configure(bg=BG)
-        self.option_add("*Font", ("MS W98 UI", 14))
+        self.option_add("*Font", ("MS W98 UI", 10 if COMPACT else 14))
         self.option_add("*Foreground", TEXT)
         self.option_add("*Background", BG)
         self.bind_all("<Button-1>", lambda _e: subprocess.Popen(
@@ -1989,15 +1998,16 @@ class AuroraApp(tk.Tk):
 
     def heading(self, parent, title, subtitle=""):
         tk.Label(parent, text=title, bg=BG, fg=TEXT,
-                 font=("MS W98 UI", 27, "bold"), anchor="w").pack(fill="x", pady=(0, 4))
+                 font=("MS W98 UI", 20 if COMPACT else 27, "bold"), anchor="w").pack(fill="x", pady=(0, 2 if COMPACT else 4))
         if subtitle:
             tk.Label(parent, text=subtitle, bg=BG, fg=MUTED,
-                     font=("MS W98 UI", 14), anchor="w").pack(fill="x", pady=(0, 20))
+                     font=("MS W98 UI", 10 if COMPACT else 14), anchor="w").pack(fill="x", pady=(0, 8 if COMPACT else 20))
 
     def card(self, parent, title):
-        frame = tk.Frame(parent, bg=PANEL, bd=1, relief="solid", padx=18, pady=16)
+        frame = tk.Frame(parent, bg=PANEL, bd=1, relief="solid",
+                         padx=9 if COMPACT else 18, pady=7 if COMPACT else 16)
         tk.Label(frame, text=title, bg=PANEL, fg=TEXT,
-                 font=("MS W98 UI", 18, "bold"), anchor="w").pack(fill="x", pady=(0, 12))
+                 font=("MS W98 UI", 14 if COMPACT else 18, "bold"), anchor="w").pack(fill="x", pady=(0, 5 if COMPACT else 12))
         return frame
 
 class Settings(AuroraApp):
@@ -2007,12 +2017,14 @@ class Settings(AuroraApp):
         super().__init__("Aurora Settings")
         shell = tk.Frame(self, bg=BG)
         shell.pack(fill="both", expand=True)
-        sidebar = tk.Frame(shell, bg="#151515", width=330, padx=14, pady=18)
+        sidebar = tk.Frame(shell, bg="#151515", width=215 if COMPACT else 330,
+                           padx=7 if COMPACT else 14, pady=8 if COMPACT else 18)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
         tk.Label(sidebar, text="Aurora Settings", bg="#151515", fg=TEXT,
-                 font=("MS W98 UI", 19, "bold"), anchor="w").pack(fill="x", padx=8, pady=(4, 22))
-        self.content = tk.Frame(shell, bg=BG, padx=30, pady=26)
+                 font=("MS W98 UI", 14 if COMPACT else 19, "bold"), anchor="w").pack(fill="x", padx=4 if COMPACT else 8, pady=(2, 8 if COMPACT else 22))
+        self.content = tk.Frame(shell, bg=BG, padx=12 if COMPACT else 30,
+                                pady=10 if COMPACT else 26)
         self.content.pack(side="left", fill="both", expand=True)
         for name in self.pages:
             button(sidebar, name, lambda n=name: self.show(n)).pack(fill="x", pady=4)
@@ -2023,7 +2035,7 @@ class Settings(AuroraApp):
             child.destroy()
 
     def row(self, parent, name, value):
-        line = tk.Frame(parent, bg=PANEL, pady=8)
+        line = tk.Frame(parent, bg=PANEL, pady=3 if COMPACT else 8)
         line.pack(fill="x")
         tk.Label(line, text=name, bg=PANEL, fg=MUTED, width=20, anchor="w").pack(side="left")
         tk.Label(line, text=value, bg=PANEL, fg=TEXT, anchor="w").pack(side="left", fill="x", expand=True)

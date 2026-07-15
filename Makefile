@@ -161,6 +161,7 @@ run-pi-qemu-smoke: pi-qemu-smoke
 		-device usb-kbd \
 		-device usb-tablet \
 		-display cocoa \
+		-full-screen \
 		-serial stdio
 
 pi4-image: pi-test-image

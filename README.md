@@ -153,7 +153,7 @@ Build products are intentionally excluded from Git because the current image is 
 ## Raspberry Pi 4 / Pi 5 test image
 
 Download the experimental image from the
-[pi-test-0.1 prerelease](https://github.com/Abd196-bit/AuroraOS-98/releases/tag/pi-test-0.1).
+[pi-test-0.4 prerelease](https://github.com/Abd196-bit/AuroraOS-98/releases/tag/pi-test-0.4).
 It requires a Pi 4 or Pi 5 with at least 4 GB RAM and a 2 GB or larger microSD
 card. In Raspberry Pi Imager, choose **Use custom**, select the downloaded
 `.img.xz`, choose the microSD card, and write it. The image runs from RAM and
@@ -168,10 +168,11 @@ make pi-test-image
 ```
 
 For a generic 5-inch 800×480 HDMI panel connected to HDMI0, download the
-[800×480 diagnostic image](https://github.com/Abd196-bit/AuroraOS-98/releases/download/pi-test-0.3/AuroraOS-98-Pi4-Pi5-test-0.3-800x480.img.xz)
+[fullscreen 800×480 image](https://github.com/Abd196-bit/AuroraOS-98/releases/download/pi-test-0.4/AuroraOS-98-Pi4-Pi5-test-0.4-800x480-fullscreen.img.xz)
 or build it with `make pi-test-image-800x480`. This variant disables the legacy
-firmware mode, forces the current KMS kernel display setting, and prevents Xorg
-from switching back to the QEMU preview's 1440×900 mode.
+firmware mode, forces the current KMS kernel display setting, prevents Xorg from
+switching back to 1440×900, and uses a compact 46-pixel taskbar and 96-DPI app
+layout so the complete desktop and Settings window fit the panel.
 
 ### Emulate a Raspberry Pi 4
 
