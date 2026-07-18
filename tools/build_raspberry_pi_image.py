@@ -22,6 +22,7 @@ DOWNLOADS = BUILD / "downloads"
 PACKAGES = BUILD / "packages"
 PACKAGE_ROOT = BUILD / "package-root"
 QEMU_INITRAMFS = ROOT / "build" / "firefox-qemu-arm64" / "aurora-firefox-initramfs.cpio.lz4"
+ARCADE_INITRAMFS = ROOT / "build" / "arcade-legend-x-arm64" / "arcade-legend-x-initramfs.cpio.lz4"
 
 ALPINE_VERSION = "3.24.1"
 ALPINE_BRANCH = "v3.24"
@@ -34,6 +35,8 @@ OUTPUT_NAME = "AuroraOS-98-Pi4-Pi5-test-0.1.img"
 OUTPUT_800X480_NAME = "AuroraOS-98-Pi4-Pi5-test-0.4-800x480-fullscreen.img"
 QEMU_SMOKE_INITRAMFS = "aurora-initramfs-rpi-qemu-smoke.lz4"
 QEMU_ROOT_IMAGE = "aurora-pi-qemu-root.ext4"
+ARCADE_QEMU_ROOT_IMAGE = "arcade-legend-x-pi-qemu-root.ext4"
+ARCADE_OUTPUT_NAME = "Arcade-Legend-X-AuroraOS-Pi4-0.3-Legacy-HDMI-800x480.img"
 QEMU_ROOT_SIZE = 1024 * 1024 * 1024
 IMAGE_SIZE = 2048 * 1024 * 1024
 PARTITION_START = 2048
@@ -117,7 +120,7 @@ def package_index() -> dict[str, dict[str, str]]:
     return packages
 
 
-def prepare_pi_files() -> Path:
+def prepare_pi_files(product_name: str = "AuroraOS 98") -> Path:
     index = package_index()
     if PACKAGE_ROOT.exists():
         shutil.rmtree(PACKAGE_ROOT)
@@ -143,7 +146,7 @@ def prepare_pi_files() -> Path:
     marker = PACKAGE_ROOT / "etc" / "aurora" / "pi-test-build"
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(
-        f"AuroraOS 98 Raspberry Pi hardware test {PI_TEST_VERSION}\n"
+        f"{product_name} Raspberry Pi hardware test {PI_TEST_VERSION}\n"
         f"Alpine Linux {ALPINE_VERSION} aarch64 foundation\n"
         "Requires Raspberry Pi 4 or 5 with at least 4 GB RAM\n"
     )
@@ -167,13 +170,19 @@ def normalize_modules(modules: Path) -> None:
         metadata.write_text(text.replace(".ko.gz", ".ko"))
 
 
-def modify_init(data: bytes, display_800x480: bool, qemu_smoke: bool) -> bytes:
+def modify_init(
+    data: bytes,
+    display_800x480: bool,
+    qemu_smoke: bool,
+    product_name: str,
+    pi4_legacy_display: bool = False,
+) -> bytes:
     text = data.decode()
     path_setup = "export PATH=/sbin:/bin:/usr/sbin:/usr/bin\n"
     if path_setup not in text:
         raise RuntimeError("could not locate PATH setup in Aurora init")
     early_setup = "mount -o remount,rw / 2>/dev/null || true\n"
-    compact = qemu_smoke or display_800x480
+    compact = qemu_smoke or display_800x480 or pi4_legacy_display
     if compact:
         early_setup += "export AURORA_COMPACT=1\n"
         text = text.replace("export GDK_DPI_SCALE=1.25", "export GDK_DPI_SCALE=1")
@@ -184,6 +193,20 @@ def modify_init(data: bytes, display_800x480: bool, qemu_smoke: bool) -> bytes:
     if qemu_smoke:
         pi_setup = """# AuroraOS Raspberry Pi QEMU framebuffer profile
 mdev -s 2>/dev/null || true
+sed -i 's/Driver "modesetting"/Driver "fbdev"/' /etc/X11/xorg.conf
+sed -i 's/^[[:space:]]*Modes .*/        Modes "800x480"/' /etc/X11/xorg.conf
+"""
+    elif pi4_legacy_display:
+        pi_setup = """# Pi 4 legacy framebuffer profile for older HDMI controller boards
+for module in bcm2835_dma bcm2835_codec bcm2835_isp bcmgenet brcmfmac cfg80211 snd_bcm2835 raspberrypi_hwmon; do
+    modprobe "$module" >/dev/console 2>&1 || true
+done
+mdev -s 2>/dev/null || true
+for i in 1 2 3 4 5; do
+    [ -e /dev/fb0 ] && break
+    sleep 1
+    mdev -s 2>/dev/null || true
+done
 sed -i 's/Driver "modesetting"/Driver "fbdev"/' /etc/X11/xorg.conf
 sed -i 's/^[[:space:]]*Modes .*/        Modes "800x480"/' /etc/X11/xorg.conf
 """
@@ -219,7 +242,7 @@ sed -i \\
 """
     if qemu_smoke:
         pass
-    elif display_800x480:
+    elif display_800x480 or pi4_legacy_display:
         pi_setup += """# Do not let the inherited QEMU Xorg profile select 1440x900.
 sed -i 's/^[[:space:]]*Modes .*/        Modes "800x480"/' /etc/X11/xorg.conf
 """
@@ -234,7 +257,11 @@ sed -i '/^[[:space:]]*Modes /d' /etc/X11/xorg.conf
     )
     text = text.replace(
         "AuroraOS 98: starting real Firefox ESR on Xorg",
-        "AuroraOS 98 Raspberry Pi test: starting Xorg",
+        f"{product_name} Raspberry Pi test: starting Xorg",
+    )
+    text = text.replace(
+        "Arcade Legend X: starting Xorg",
+        f"{product_name} Raspberry Pi test: starting Xorg",
     )
     return text.encode()
 
@@ -298,11 +325,14 @@ def build_pi_initramfs(
     output: Path,
     display_800x480: bool,
     qemu_smoke: bool = False,
+    source_initramfs: Path = QEMU_INITRAMFS,
+    product_name: str = "AuroraOS 98",
+    pi4_legacy_display: bool = False,
 ) -> None:
-    if not QEMU_INITRAMFS.exists():
-        raise RuntimeError("ARM64 Aurora QEMU initramfs is missing; run make firefox-qemu-arm64 first")
+    if not source_initramfs.exists():
+        raise RuntimeError(f"ARM64 source initramfs is missing: {source_initramfs}")
     output.parent.mkdir(parents=True, exist_ok=True)
-    decompressor = subprocess.Popen(["lz4", "-dc", str(QEMU_INITRAMFS)], stdout=subprocess.PIPE)
+    decompressor = subprocess.Popen(["lz4", "-dc", str(source_initramfs)], stdout=subprocess.PIPE)
     output_file = output.open("wb")
     compressor = subprocess.Popen(["lz4", "-l", "-1", "-q"], stdin=subprocess.PIPE, stdout=output_file)
     assert decompressor.stdout is not None and compressor.stdin is not None
@@ -324,7 +354,11 @@ def build_pi_initramfs(
             if name == "TRAILER!!!":
                 break
             normalized_name = name.removeprefix("./")
-            smoke_skip = qemu_smoke and normalized_name.startswith(QEMU_SMOKE_SKIP_PREFIXES)
+            smoke_skip = (
+                qemu_smoke
+                and source_initramfs == QEMU_INITRAMFS
+                and normalized_name.startswith(QEMU_SMOKE_SKIP_PREFIXES)
+            )
             skip = (
                 name == "./init"
                 or name == "init"
@@ -354,7 +388,13 @@ def build_pi_initramfs(
             target,
             "./init",
             stat.S_IFREG | 0o755,
-            modify_init(init_data, display_800x480, qemu_smoke),
+            modify_init(
+                init_data,
+                display_800x480,
+                qemu_smoke,
+                product_name,
+                pi4_legacy_display,
+            ),
             inode,
         )
         inode += 1
@@ -415,7 +455,14 @@ def mtools_environment(base: Path, image: Path, directory: Path) -> dict[str, st
     return environment
 
 
-def assemble_image(base: Path, initramfs: Path, output: Path, display_800x480: bool) -> None:
+def assemble_image(
+    base: Path,
+    initramfs: Path,
+    output: Path,
+    display_800x480: bool,
+    product_name: str = "AuroraOS 98",
+    pi4_legacy_display: bool = False,
+) -> None:
     write_mbr(output)
     offset = PARTITION_START * SECTOR_SIZE
     run(["mformat", "-i", f"{output}@@{offset}", "-F", "-v", "AURORA_PI", "::"])
@@ -426,36 +473,52 @@ def assemble_image(base: Path, initramfs: Path, output: Path, display_800x480: b
         run(["mdel", "b:/boot/initramfs-rpi"], env=environment)
         run(["mcopy", "-o", str(initramfs), "b:/boot/initramfs-rpi"], env=environment)
 
-        usercfg = (
-            "# AuroraOS 98 Raspberry Pi hardware test\n"
-            "disable_overscan=1\n"
-            "max_framebuffers=2\n"
-            "[pi4]\n"
-            "dtoverlay=vc4-kms-v3d-pi4\n"
-            "[pi5]\n"
-            "dtoverlay=vc4-kms-v3d-pi5\n"
-            "[all]\n"
-        )
-        cmdline = "console=tty1 quiet loglevel=4 vt.global_cursor_default=0"
-        if display_800x480:
+        usercfg = f"# {product_name} Raspberry Pi hardware test\n"
+        usercfg += "disable_overscan=1\nmax_framebuffers=2\n"
+        if not pi4_legacy_display:
             usercfg += (
-                "# KMS controls the generic 5-inch HDMI0 panel\n"
-                "disable_splash=1\n"
-                "disable_fw_kms_setup=1\n"
+                "[pi4]\n"
+                "dtoverlay=vc4-kms-v3d-pi4\n"
+                "[pi5]\n"
+                "dtoverlay=vc4-kms-v3d-pi5\n"
+                "[all]\n"
             )
-            cmdline = (
-                "console=tty1 loglevel=7 ignore_loglevel earlycon "
-                "video=HDMI-A-1:800x480M@60D"
+        cmdline = "console=tty1 quiet loglevel=4 vt.global_cursor_default=0"
+        if pi4_legacy_display:
+            usercfg += (
+                "# Pi 4 firmware framebuffer for older 5-inch HDMI boards.\n"
+                "hdmi_force_hotplug=1\n"
+                "hdmi_group=2\n"
+                "hdmi_mode=87\n"
+                "hdmi_cvt=800 480 60 6 0 0 0\n"
+                "hdmi_drive=2\n"
+                "framebuffer_width=800\n"
+                "framebuffer_height=480\n"
+                "framebuffer_depth=32\n"
+                "framebuffer_ignore_alpha=1\n"
+                "disable_splash=1\n"
+            )
+        elif display_800x480:
+            usercfg += (
+                "# Waveshare-compatible 5-inch 800x480 HDMI timing.\n"
+                "# Let the firmware pass this custom CVT mode to KMS.\n"
+                "hdmi_force_hotplug=1\n"
+                "hdmi_group=2\n"
+                "hdmi_mode=87\n"
+                "hdmi_cvt=800 480 60 6 0 0 0\n"
+                "hdmi_drive=1\n"
+                "disable_splash=1\n"
             )
         (temp / "usercfg.txt").write_text(usercfg)
         (temp / "cmdline.txt").write_text(cmdline + "\n")
-        display_profile = (
-            "Display profile: forced 800x480 at 60 Hz on HDMI0.\r\n"
-            if display_800x480
-            else "Display profile: automatic HDMI detection.\r\n"
-        )
+        if pi4_legacy_display:
+            display_profile = "Display profile: Pi 4 legacy HDMI framebuffer at 800x480.\r\n"
+        elif display_800x480:
+            display_profile = "Display profile: Waveshare-compatible 800x480 CVT at 60 Hz on HDMI.\r\n"
+        else:
+            display_profile = "Display profile: automatic HDMI detection.\r\n"
         (temp / "README-PI.txt").write_text(
-            f"AuroraOS 98 Raspberry Pi hardware test {PI_TEST_VERSION}\r\n"
+            f"{product_name} Raspberry Pi hardware test {PI_TEST_VERSION}\r\n"
             "================================================\r\n"
             "Target: Raspberry Pi 4 or Pi 5 with 4 GB RAM or more.\r\n"
             "This is an experimental RAM-based desktop image. Changes do not persist.\r\n"
@@ -509,6 +572,7 @@ def prepare_qemu_smoke_boot_files(base: Path) -> Path:
         ("::bcm2711-rpi-4-b.dtb", "bcm2711-rpi-4-b.dtb"),
         ("::boot/initramfs-rpi", "initramfs-rpi"),
     ):
+        (destination / host).unlink(missing_ok=True)
         run(["mcopy", "-o", "-i", source, guest, str(destination / host)])
     return destination
 
@@ -541,9 +605,9 @@ def prepare_qemu_device_tree(destination: Path) -> None:
     run(["dtc", "-q", "-I", "dts", "-O", "dtb", "-o", str(output), str(source)])
 
 
-def build_qemu_root(initramfs: Path, destination: Path) -> Path:
+def build_qemu_root(initramfs: Path, destination: Path, image_name: str = QEMU_ROOT_IMAGE) -> Path:
     root = BUILD / "qemu-root"
-    image = BUILD / QEMU_ROOT_IMAGE
+    image = BUILD / image_name
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True)
     decompressor = subprocess.Popen(["lz4", "-dc", str(initramfs)], stdout=subprocess.PIPE)
@@ -557,8 +621,9 @@ def build_qemu_root(initramfs: Path, destination: Path) -> Path:
     init_link.unlink(missing_ok=True)
     init_link.symlink_to("/init")
     image.unlink(missing_ok=True)
+    root_size = IMAGE_SIZE if image_name == ARCADE_QEMU_ROOT_IMAGE else QEMU_ROOT_SIZE
     with image.open("wb") as target:
-        target.truncate(QEMU_ROOT_SIZE)
+        target.truncate(root_size)
     run([e2fs_tool("mke2fs"), "-q", "-t", "ext4", "-F", "-L", "AURORA_ROOT", "-d", str(root), str(image)])
     run([e2fs_tool("e2fsck"), "-fn", str(image)])
     prepare_qemu_device_tree(destination)
@@ -579,17 +644,37 @@ def main() -> int:
         action="store_true",
         help="build a reduced Pi 4 initramfs that fits QEMU's emulated RAM",
     )
+    parser.add_argument(
+        "--pi4-legacy-display",
+        action="store_true",
+        help="use the Pi 4 firmware framebuffer for older 800x480 HDMI boards",
+    )
+    parser.add_argument(
+        "--arcade-legend-x",
+        action="store_true",
+        help="package the Arcade Legend X console frontend instead of the Aurora desktop",
+    )
     args = parser.parse_args()
     require_tools()
     BUILD.mkdir(parents=True, exist_ok=True)
     base = ensure_base_image()
-    pi_root = prepare_pi_files()
+    product_name = "Arcade Legend X" if args.arcade_legend_x else "AuroraOS 98"
+    source_initramfs = ARCADE_INITRAMFS if args.arcade_legend_x else QEMU_INITRAMFS
+    pi_root = prepare_pi_files(product_name)
     if args.qemu_smoke:
         initramfs = BUILD / QEMU_SMOKE_INITRAMFS
-        build_pi_initramfs(pi_root, initramfs, True, qemu_smoke=True)
+        build_pi_initramfs(
+            pi_root,
+            initramfs,
+            True,
+            qemu_smoke=True,
+            source_initramfs=source_initramfs,
+            product_name=product_name,
+        )
         run(["lz4", "-t", str(initramfs)])
         qemu_files = prepare_qemu_smoke_boot_files(base)
-        root_image = build_qemu_root(initramfs, qemu_files)
+        qemu_root_name = ARCADE_QEMU_ROOT_IMAGE if args.arcade_legend_x else QEMU_ROOT_IMAGE
+        root_image = build_qemu_root(initramfs, qemu_files, qemu_root_name)
         initramfs.unlink(missing_ok=True)
         if not args.keep_intermediates:
             base.unlink(missing_ok=True)
@@ -597,17 +682,34 @@ def main() -> int:
         print(f"Raspberry Pi QEMU virtual SD root: {root_image}")
         return 0
     initramfs = BUILD / "aurora-initramfs-rpi.lz4"
-    image = BUILD / (OUTPUT_800X480_NAME if args.display_800x480 else OUTPUT_NAME)
-    build_pi_initramfs(pi_root, initramfs, args.display_800x480)
+    if args.arcade_legend_x:
+        image = BUILD / ARCADE_OUTPUT_NAME
+    else:
+        image = BUILD / (OUTPUT_800X480_NAME if args.display_800x480 else OUTPUT_NAME)
+    build_pi_initramfs(
+        pi_root,
+        initramfs,
+        args.display_800x480,
+        source_initramfs=source_initramfs,
+        product_name=product_name,
+        pi4_legacy_display=args.pi4_legacy_display,
+    )
     run(["lz4", "-t", str(initramfs)])
-    assemble_image(base, initramfs, image, args.display_800x480)
+    assemble_image(
+        base,
+        initramfs,
+        image,
+        args.display_800x480,
+        product_name,
+        args.pi4_legacy_display,
+    )
     if not args.keep_intermediates:
         clean_precompression_intermediates(base, initramfs)
     compressed = compress_image(image)
     if not args.keep_intermediates:
         image.unlink(missing_ok=True)
     print()
-    print("AuroraOS Raspberry Pi test image ready")
+    print(f"{product_name} Raspberry Pi test image ready")
     print(f"Image: {compressed}")
     print(f"SHA256: {compressed.with_suffix(compressed.suffix + '.sha256')}")
     print("Hardware requirement: Raspberry Pi 4/5 with at least 4 GB RAM")

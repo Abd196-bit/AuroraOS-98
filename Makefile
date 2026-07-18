@@ -5,11 +5,13 @@ AURORA_QEMU_WIDTH ?= 1440
 AURORA_QEMU_HEIGHT ?= 900
 AURORA_QEMU_REFRESH ?= 60
 AURORA_QEMU_CPUS ?= 4
+AURORA_QEMU_MEMORY ?= 8192M
+AURORA_ARM_QEMU_MEMORY ?= 12288M
 AURORA_QEMU_ACCEL ?= tcg,thread=multi
 AURORA_QEMU_MONITOR ?= /tmp/aurora-qemu-monitor.sock
 AURORA_QEMU_QMP ?= /tmp/aurora-qemu-qmp.sock
 
-.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu run-firefox-qemu-linux firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu pi-test-image pi-test-image-800x480 pi-qemu-smoke run-pi-qemu-smoke pi4-image pi5-image clean
+.PHONY: all check icons system-icons assets native rootfs firefox-qemu run-firefox-qemu run-firefox-qemu-linux firefox-qemu-arm64 run-firefox-qemu-arm64 run-fast-qemu open-qemu install-macos-user uninstall-macos-user pi-test-image pi-test-image-800x480 pi-qemu-smoke run-pi-qemu-smoke pi4-image pi5-image clean
 
 all: check native rootfs
 
@@ -18,6 +20,7 @@ check:
 	@test -f "MSW98UI-Regular copy.ttf"
 	@test -f "MSW98UI-Bold copy.ttf"
 	@test -f "click.wav"
+	@test -f "startup.mp3"
 	@test -f assets/manifest.json
 	@test -f systemd/system/aurora-pi-hardwared.service
 	@test -f systemd/user/aurora-session.target
@@ -72,7 +75,7 @@ firefox-qemu-arm64:
 	python3 tools/build_arm64_qemu.py --build
 
 run-firefox-qemu:
-	qemu-system-x86_64 -m 6144M \
+	qemu-system-x86_64 -m $(AURORA_QEMU_MEMORY) \
 		-accel $(AURORA_QEMU_ACCEL) \
 		-smp $(AURORA_QEMU_CPUS) \
 		-kernel build/firefox-qemu/vmlinuz-virt \
@@ -82,10 +85,10 @@ run-firefox-qemu:
 		-device usb-ehci,id=ehci \
 		-device usb-tablet,bus=ehci.0 \
 		-audiodev coreaudio,id=aud0 \
-		-device ES1370,audiodev=aud0 \
+		-device virtio-sound-pci,audiodev=aud0,streams=1 \
 		-netdev user,id=net0 \
 		-device virtio-net-pci,netdev=net0 \
-		-display cocoa \
+		-display cocoa,full-screen=on,zoom-to-fit=on \
 		-monitor none \
 		-serial stdio
 
@@ -96,7 +99,7 @@ run-firefox-qemu-linux:
 		printf 'KVM is unavailable; falling back to slower software emulation.\n'; \
 		accel=tcg,thread=multi; cpu=max; \
 	fi; \
-	qemu-system-x86_64 -m 6144M \
+	qemu-system-x86_64 -m $(AURORA_QEMU_MEMORY) \
 		-accel "$$accel" \
 		-cpu "$$cpu" \
 		-smp $(AURORA_QEMU_CPUS) \
@@ -108,7 +111,7 @@ run-firefox-qemu-linux:
 		-device usb-tablet,bus=xhci.0 \
 		-device usb-kbd,bus=xhci.0 \
 		-audiodev pipewire,id=aud0 \
-		-device ES1370,audiodev=aud0 \
+		-device virtio-sound-pci,audiodev=aud0,streams=1 \
 		-netdev user,id=net0 \
 		-device virtio-net-pci,netdev=net0 \
 		-display gtk,zoom-to-fit=on \
@@ -117,7 +120,7 @@ run-firefox-qemu-linux:
 
 run-firefox-qemu-arm64:
 	@rm -f "$(AURORA_QEMU_MONITOR)" "$(AURORA_QEMU_QMP)"
-	qemu-system-aarch64 -m 6144M \
+	qemu-system-aarch64 -m $(AURORA_ARM_QEMU_MEMORY) \
 		-machine virt,accel=hvf \
 		-cpu host \
 		-smp $(AURORA_QEMU_CPUS) \
@@ -129,10 +132,10 @@ run-firefox-qemu-arm64:
 		-device usb-tablet,bus=xhci.0 \
 		-device usb-kbd,bus=xhci.0 \
 		-audiodev coreaudio,id=aud0 \
-		-device ES1370,audiodev=aud0 \
+		-device virtio-sound-pci,audiodev=aud0,streams=1 \
 		-netdev user,id=net0 \
 		-device virtio-net-pci,netdev=net0 \
-		-display cocoa \
+		-display cocoa,full-screen=on,zoom-to-fit=on \
 		-monitor unix:"$(AURORA_QEMU_MONITOR)",server=on,wait=off \
 		-qmp unix:"$(AURORA_QEMU_QMP)",server=on,wait=off \
 		-serial none
@@ -141,6 +144,12 @@ run-fast-qemu: run-firefox-qemu-arm64
 
 open-qemu:
 	open "$(CURDIR)/run-aurora-qemu.command"
+
+install-macos-user:
+	./tools/install_macos_user.sh install
+
+uninstall-macos-user:
+	./tools/install_macos_user.sh uninstall
 
 pi-test-image:
 	python3 tools/build_raspberry_pi_image.py

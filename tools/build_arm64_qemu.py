@@ -87,6 +87,7 @@ def main() -> int:
     if args.build:
         image.build()
     else:
+        image.install_debian_runtime()
         image.configure_rootfs()
         image.build_cpio()
     target = BASE / "vmlinuz-virt"

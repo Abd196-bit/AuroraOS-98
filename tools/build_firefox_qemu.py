@@ -3,15 +3,19 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import io
 import os
 import re
 import shutil
+import struct
 import subprocess
 import tarfile
 import time
 import urllib.request
 from pathlib import Path
+
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +26,11 @@ OUT = BASE / "aurora-firefox-initramfs.cpio.lz4"
 MODULES_SRC = BASE / "linux-virt" / "lib" / "modules"
 TARGET_ARCH = "x86_64"
 VSCODIUM_FLAC_COMPAT_URL = f"https://dl-cdn.alpinelinux.org/alpine/v3.22/main/{TARGET_ARCH}/libflac-1.4.3-r1.apk"
+DEBIAN_RUNTIME_URL = (
+    "https://ftp.icm.edu.pl/pub/Linux/distributions/debian-cdimage/"
+    "cloud/trixie/20260712-2537/debian-13-nocloud-arm64-20260712-2537.tar.xz"
+)
+DEBIAN_RUNTIME_SHA512 = "24a7b30f80b261e3c00c0a7b72828cb7fe1d7509ba212e1c5fe2cc46c0554848f6c927077bacc17d43d30c14786c391d734c7a6c99b816fd28c319afcf92b5ec"
 REPOS = {
     "main": f"https://dl-cdn.alpinelinux.org/alpine/edge/main/{TARGET_ARCH}",
     "community": f"https://dl-cdn.alpinelinux.org/alpine/edge/community/{TARGET_ARCH}",
@@ -31,19 +40,25 @@ REPOS = {
 WANTED = [
     "alpine-base",
     "alsa-utils",
+    "bash",
+    "mpg123",
     "7zip",
     "dbus",
     "dbus-x11",
     "feh",
     "font-dejavu",
     "firefox-esr",
+    "godot",
+    "gcompat",
     "jwm",
+    "gtk-update-icon-cache",
     "mesa-dri-gallium",
     "networkmanager-cli",
     "networkmanager-tui",
     "networkmanager-wifi",
     "desktop-file-utils",
     "shared-mime-info",
+    "sudo",
     "dpkg",
     "file",
     "flac-libs",
@@ -76,6 +91,7 @@ WANTED = [
 DEFAULT_APPS = [
     ("Browser", "Firefox", "firefox-esr", "Installed in this QEMU image"),
     ("Programming", "VSCodium", "aurora-code", "Real VSCodium editor installed in this QEMU image"),
+    ("Game Dev", "Godot Engine", "aurora-godot", "Godot 4 editor installed in this QEMU image"),
     ("Game Dev", "Unity Hub Installer", "aurora-unity-hub", "Official Unity Hub installer flow"),
     ("Aurora", "Explorer", "aurora-explorer", "File manager"),
     ("Aurora", "Archive Manager", "aurora-archive-manager", "ZIP, 7z, RAR, and tar archive manager"),
@@ -247,6 +263,76 @@ def extract_packages(paths: list[Path]) -> None:
         run(["bsdtar", "-xf", str(path), "-C", str(ROOTFS)])
 
 
+def install_debian_runtime() -> None:
+    """Embed a real Debian/glibc runtime for ARM64 .deb applications."""
+    if TARGET_ARCH != "aarch64":
+        return
+    archive = ROOT / "build" / "debian-arm64" / "debian-13-nocloud-arm64.tar.xz"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    if not archive.exists():
+        print("downloading Debian 13 ARM64 compatibility runtime")
+        archive.write_bytes(fetch(DEBIAN_RUNTIME_URL))
+    hasher = hashlib.sha512()
+    with archive.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    digest = hasher.hexdigest()
+    if digest != DEBIAN_RUNTIME_SHA512:
+        raise RuntimeError(f"Debian runtime checksum mismatch: {digest}")
+    staging = archive.parent / "rootfs-staging"
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    run(["bsdtar", "-xpf", str(archive), "-C", str(staging)])
+    disk = staging / "disk.raw"
+    if not disk.exists():
+        raise RuntimeError("Debian cloud archive did not contain disk.raw")
+
+    with disk.open("rb") as source:
+        source.seek(512)
+        header = source.read(92)
+        if header[:8] != b"EFI PART":
+            raise RuntimeError("Debian runtime disk has no GPT partition table")
+        entries_lba = struct.unpack_from("<Q", header, 72)[0]
+        entry_count = struct.unpack_from("<I", header, 80)[0]
+        entry_size = struct.unpack_from("<I", header, 84)[0]
+        source.seek(entries_lba * 512)
+        partitions = []
+        for _ in range(entry_count):
+            entry = source.read(entry_size)
+            if len(entry) != entry_size:
+                break
+            first_lba, last_lba = struct.unpack_from("<QQ", entry, 32)
+            if entry[:16] != b"\0" * 16 and last_lba >= first_lba:
+                partitions.append((last_lba - first_lba + 1, first_lba))
+    if not partitions:
+        raise RuntimeError("Debian runtime disk has no usable GPT partitions")
+    sectors, first_lba = max(partitions)
+    root_partition = staging / "root.ext4"
+    run([
+        "dd", f"if={disk}", f"of={root_partition}", "bs=512",
+        f"skip={first_lba}", f"count={sectors}", "status=none",
+    ])
+
+    debugfs = shutil.which("debugfs")
+    if not debugfs:
+        homebrew_debugfs = Path("/opt/homebrew/opt/e2fsprogs/sbin/debugfs")
+        debugfs = str(homebrew_debugfs) if homebrew_debugfs.exists() else None
+    if not debugfs:
+        raise RuntimeError("debugfs is required; on macOS run: brew install e2fsprogs")
+
+    destination = ROOTFS / "opt" / "aurora-debian"
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True)
+    run([debugfs, "-R", f'rdump / "{destination}"', str(root_partition)])
+    if not (destination / "bin" / "bash").exists():
+        raise RuntimeError("debugfs did not extract the Debian runtime root filesystem")
+    shutil.rmtree(staging)
+    for relative in ("dev", "dev/pts", "proc", "sys", "run", "tmp"):
+        (destination / relative).mkdir(parents=True, exist_ok=True)
+
+
 def write_apk_database(packages: list[dict]) -> None:
     """Record manually extracted APKs so runtime apk transactions are valid."""
     database = ROOTFS / "lib" / "apk" / "db"
@@ -323,6 +409,8 @@ def normalize_kernel_modules(modules_root: Path) -> None:
 def write_file(path: str, content: str, mode: int = 0o644) -> None:
     dst = ROOTFS / path.lstrip("/")
     dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists() and not dst.is_symlink():
+        dst.chmod(dst.stat().st_mode | 0o200)
     dst.write_text(content)
     dst.chmod(mode)
 
@@ -337,11 +425,40 @@ def write_app_surface() -> None:
     if icon_dir.exists():
         shutil.rmtree(icon_dir)
     shutil.copytree(ROOT / "assets" / "icons" / "system", icon_dir, symlinks=True, ignore_dangling_symlinks=True)
+    for custom_icon in (ROOT / "assets" / "icons").glob("aurora-*.png"):
+        shutil.copy2(custom_icon, icon_dir / custom_icon.name)
+        Image.open(custom_icon).convert("RGBA").resize((48, 48), Image.Resampling.LANCZOS).save(
+            icon_dir / f"{custom_icon.stem}-48.png"
+        )
+    godot_icon = ROOTFS / "usr" / "share" / "icons" / "hicolor" / "256x256" / "apps" / "godot.png"
+    if godot_icon.exists():
+        Image.open(godot_icon).convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS).save(
+            icon_dir / "godot-64.png"
+        )
+    aurora_theme = ROOTFS / "usr" / "share" / "icons" / "AuroraClassic"
+    if aurora_theme.exists():
+        shutil.rmtree(aurora_theme)
     media_dir = ROOTFS / "usr" / "share" / "aurora"
     sound_dir = media_dir / "sounds"
     sound_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / "IMG_0249.jpg", media_dir / "wallpaper.jpg")
     shutil.copy2(ROOT / "click.wav", sound_dir / "click.wav")
+    shutil.copy2(ROOT / "startup.mp3", sound_dir / "startup.mp3")
+
+    write_file(
+        "/etc/asound.conf",
+        """defaults.pcm.card 0
+defaults.ctl.card 0
+pcm.!default {
+    type plug
+    slave.pcm "hw:0,0"
+}
+ctl.!default {
+    type hw
+    card 0
+}
+""",
+    )
 
     font_dir = ROOTFS / "usr" / "share" / "fonts" / "aurora"
     font_dir.mkdir(parents=True, exist_ok=True)
@@ -401,6 +518,34 @@ exec "$@"
 """,
         0o755,
     )
+    write_file(
+        "/usr/bin/aurora-startup-sound",
+        """#!/bin/sh
+(
+    mpg123 -q -a default /usr/share/aurora/sounds/startup.mp3 \
+        >/tmp/aurora-startup-sound.log 2>&1 || \
+    mpg123 -q /usr/share/aurora/sounds/startup.mp3 \
+        >>/tmp/aurora-startup-sound.log 2>&1 || true
+) &
+""",
+        0o755,
+    )
+    write_file(
+        "/usr/bin/aurora-godot",
+        """#!/bin/sh
+export HOME=/tmp/firefox-home
+export XDG_CONFIG_HOME=/tmp/firefox-home/.config
+export XDG_DATA_HOME=/tmp/firefox-home/.local/share
+export XDG_RUNTIME_DIR=/run/user/0
+export DISPLAY="${DISPLAY:-:0}"
+export LIBGL_ALWAYS_SOFTWARE=1
+export GODOT_AUDIO_DRIVER=ALSA
+mkdir -p /tmp/firefox-home/Documents/Godot
+exec godot --editor --display-driver x11 --rendering-method gl_compatibility \
+  --path /tmp/firefox-home/Documents/Godot "$@"
+""",
+        0o755,
+    )
 
     def with_click(command: str) -> str:
         return f"/usr/bin/aurora-run-clicked {command}"
@@ -414,6 +559,7 @@ exec "$@"
         "package-center": "/usr/bin/aurora-package-center",
         "terminal": "xterm",
         "firefox": "/usr/bin/aurora-firefox",
+        "godot": "/usr/bin/aurora-godot",
         "archive-manager": "xarchiver",
     }
     for launcher_name, launcher_command in launchers.items():
@@ -893,10 +1039,10 @@ QEMU normally exposes wired NAT, not the Mac Wi-Fi card. Real Wi-Fi lists show o
 panel_sound() {
   xmessage -center -buttons "Play Test:2,Close:0" -title "Aurora Settings - Sound" "Sound
 
-Output: QEMU ES1370 / host CoreAudio
+Output: QEMU VirtIO Sound / host audio
 Click sound: /usr/share/aurora/sounds/click.wav
 
-If Firefox audio is silent, check QEMU was launched with -audiodev coreaudio and ES1370." 2>/dev/null
+If Firefox audio is silent, check QEMU was launched with a host audiodev and virtio-sound-pci." 2>/dev/null
   [ "$?" = 2 ] && click
 }
 
@@ -1036,7 +1182,7 @@ fi
 cat <<'HTML'
 <div class="grid">
 <div class="section wide"><h2>Storage</h2><div class="row"><div>Macintosh HD</div><div class="value">Aurora preview rootfs in RAM</div></div><div class="storage"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div><p class="note">Applications, documents, developer files, system data, and cache are shown in one Settings app.</p></div>
-<div class="section"><h2>Sound</h2><div class="row"><div>Output</div><div class="value">QEMU ES1370 / CoreAudio</div></div><form method="get" action="/cgi-bin/network.cgi"><input type="hidden" name="action" value="sound-test"><button class="btn" type="submit">Play Click Sound</button></form></div>
+<div class="section"><h2>Sound</h2><div class="row"><div>Output</div><div class="value">QEMU VirtIO Sound / host audio</div></div><form method="get" action="/cgi-bin/network.cgi"><input type="hidden" name="action" value="sound-test"><button class="btn" type="submit">Play Click Sound</button></form></div>
 <div class="section"><h2>Task View</h2><div class="desktops"><div class="desktop active">Desktop 1</div><div class="desktop">Desktop 2</div><div class="desktop">Desktop 3</div><div class="desktop">Desktop 4</div></div><p class="note">Use the taskbar Task View button or the desktop pager to switch workspaces.</p></div>
 <div class="section wide"><h2>Network</h2>
 HTML
@@ -1183,15 +1329,31 @@ export XDG_RUNTIME_DIR=/run/user/0
 export DISPLAY="${DISPLAY:-:0}"
 export GTK_THEME=Adwaita:dark
 
+if [ -f /tmp/dbus-session.env ]; then
+  . /tmp/dbus-session.env 2>/dev/null || true
+fi
+if [ -e "$root" ] && [ ! -d "$root" ]; then
+  root="$(dirname "$root")"
+fi
+if [ ! -d "$root" ]; then
+  xmessage -center -title "Aurora Explorer" "Folder not found:\n\n$root" 2>/dev/null || true
+  root=/tmp/firefox-home/Downloads
+fi
+root="$(realpath "$root" 2>/dev/null || printf '%s' "$root")"
+
+if [ -x /usr/bin/aurora-explorer-gui ]; then
+  exec /usr/bin/aurora-explorer-gui "$root"
+fi
+
 if command -v pcmanfm >/dev/null 2>&1; then
-  if command -v dbus-launch >/dev/null 2>&1; then
+  if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-launch >/dev/null 2>&1; then
     eval "$(dbus-launch --sh-syntax 2>/dev/null)" || true
   fi
   pcmanfm --new-win "$root" >/tmp/aurora-pcmanfm.log 2>&1 && exit 0
   pcmanfm "$root" >>/tmp/aurora-pcmanfm.log 2>&1 && exit 0
 fi
 
-exec xterm -geometry 104x34+86+76 -title "AuroraOS File Explorer" -bg '#111111' -fg '#f3f3f3' -fa 'MS W98 UI' -fs 14 -e sh -c 'cd "$1" 2>/dev/null || cd /tmp/firefox-home; echo "PCManFM did not stay open; showing fallback file list."; echo; ls -lah; echo; echo "Press Enter to close."; read line' sh "$root"
+exec xterm -geometry 104x34+86+76 -title "AuroraOS File Explorer" -bg '#111111' -fg '#f3f3f3' -fa 'MS W98 UI' -fs 14 -e sh -c 'cd "$1" 2>/dev/null || cd /tmp/firefox-home; echo "PCManFM could not open this folder."; [ ! -s /tmp/aurora-pcmanfm.log ] || { echo; cat /tmp/aurora-pcmanfm.log; }; echo; ls -lah; echo; echo "Press Enter to close."; read line' sh "$root"
 """,
         0o755,
     )
@@ -1241,25 +1403,30 @@ end
 EOF
   make_link() {
     file="$1" caption="$2" icon="$3" x="$4" y="$5" command="$6"
+    case "$icon" in
+      /*) icon_path="$icon" ;;
+      *) icon_path="/usr/share/aurora/icons/$icon" ;;
+    esac
     cat >"/tmp/firefox-home/.idesktop/$file.lnk" <<EOF
 table Icon
   Caption: $caption
   ToolTip.Caption: Open $caption
-  Icon: /usr/share/aurora/icons/$icon
+  Icon: $icon_path
   X: $x
   Y: $y
   Command[0]: $command
 end
 EOF
   }
-  make_link explorer "Aurora Explorer" explorer-48.png 180 60 /usr/bin/aurora-explorer
-  make_link firefox "Firefox" network-48.png 180 190 /usr/bin/aurora-firefox
-  make_link code "VSCodium" text-editor-48.png 180 320 /usr/bin/aurora-code
-  make_link settings "Settings" settings-48.png 180 450 /usr/bin/aurora-settings
-  make_link packages "Package Center" package-center-48.png 180 580 /usr/bin/aurora-package-center
-  make_link archives "Archive Manager" package-48.png 420 580 /usr/bin/aurora-launch-archive-manager
-  make_link terminal "Terminal" terminal-48.png 430 60 /usr/bin/aurora-terminal
-  make_link taskview "Task View" taskbar-48.png 430 190 /usr/bin/aurora-task-view
+  make_link explorer "Aurora Explorer" aurora-explorer-48.png 180 60 /usr/bin/aurora-explorer
+  make_link firefox "Firefox" /usr/lib/firefox-esr/browser/chrome/icons/default/default64.png 180 190 /usr/bin/aurora-firefox
+  make_link code "VSCodium" /usr/share/pixmaps/vscodium.png 180 320 /usr/bin/aurora-code
+  make_link settings "Settings" aurora-settings-48.png 180 450 /usr/bin/aurora-settings
+  make_link packages "Package Center" aurora-package-center-48.png 180 580 /usr/bin/aurora-package-center
+  make_link archives "Archive Manager" archive-48.png 420 580 /usr/bin/aurora-launch-archive-manager
+  make_link terminal "Terminal" aurora-terminal-48.png 430 60 /usr/bin/aurora-terminal
+  make_link taskview "Task View" computer-48.png 430 190 /usr/bin/aurora-task-view
+  make_link godot "Godot Engine" godot-64.png 430 320 /usr/bin/aurora-godot
   exec idesk
 fi
 if [ ! -f /tmp/firefox-home/.config/pcmanfm/default/pcmanfm.conf ]; then
@@ -1317,8 +1484,11 @@ XDG_DOCUMENTS_DIR="/tmp/firefox-home/Documents"
 XDG_PICTURES_DIR="/tmp/firefox-home/Pictures"
 EOF
 fi
+if [ -f /tmp/dbus-session.env ]; then
+  . /tmp/dbus-session.env 2>/dev/null || true
+fi
 if command -v pcmanfm >/dev/null 2>&1; then
-  if command -v dbus-launch >/dev/null 2>&1; then
+  if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-launch >/dev/null 2>&1; then
     eval "$(dbus-launch --sh-syntax 2>/dev/null)" || true
   fi
   exec pcmanfm --desktop --profile default
@@ -1391,7 +1561,10 @@ case "$file" in
     exec /usr/bin/aurora-open-archive "$file"
     ;;
   *.apk|*.APK)
-    exec /usr/bin/aurora-install-apk-file "$file"
+    exec /usr/bin/aurora-open-apk-file "$file"
+    ;;
+  *.dmg|*.DMG)
+    exec /usr/bin/aurora-open-dmg-file "$file"
     ;;
   *.exe|*.EXE|*.msi|*.MSI)
     exec /usr/bin/aurora-run-exe-file "$file"
@@ -1496,13 +1669,34 @@ xmessage -center -title "Archive Manager" "Archive support is unavailable in thi
         0o755,
     )
     write_file(
+        "/usr/bin/aurora-open-apk-file",
+        r'''#!/bin/sh
+package="$1"
+[ -f "$package" ] || exit 1
+
+# Android APKs are ZIP containers with an AndroidManifest.xml. Alpine APKs are
+# signed tar archives. Detect the format before choosing an installer.
+if unzip -l "$package" AndroidManifest.xml 2>/dev/null | grep -q AndroidManifest.xml; then
+  exec /usr/bin/aurora-install-android-apk "$package"
+fi
+exec /usr/bin/aurora-install-apk-file "$package"
+''',
+        0o755,
+    )
+    write_file(
         "/usr/bin/aurora-install-apk-file",
         """#!/bin/sh
 package="$1"
 [ -f "$package" ] || exit 1
+description=$(file -b "$package" 2>/dev/null || true)
+if unzip -l "$package" AndroidManifest.xml 2>/dev/null | grep -q AndroidManifest.xml; then
+  exec /usr/bin/aurora-install-android-apk "$package"
+fi
 xmessage -center -buttons "Install:1,Cancel:0" -title "Install Alpine Package" "Install this native AuroraOS package?
 
-$package" 2>/dev/null
+$package
+
+Detected: $description" 2>/dev/null
 [ "$?" = 1 ] || exit 0
 exec xterm -geometry 112x32+100+90 -title "Aurora Package Installer" -e sh -c '
   echo "Aurora native package installer"
@@ -1521,20 +1715,186 @@ exec xterm -geometry 112x32+100+90 -title "Aurora Package Installer" -e sh -c '
         0o755,
     )
     write_file(
+        "/usr/bin/aurora-install-android-apk",
+        r'''#!/bin/sh
+package="$1"
+[ -f "$package" ] || exit 1
+if command -v waydroid >/dev/null 2>&1; then
+  xmessage -center -buttons "Install:1,Cancel:0" -title "Install Android App" "Install this Android ARM64 app?\n\n$package" 2>/dev/null
+  [ "$?" = 1 ] || exit 0
+  exec xterm -geometry 112x32+100+90 -title "Android App Installer" -e sh -c '
+    waydroid session start >/tmp/aurora-waydroid.log 2>&1 &
+    sleep 2
+    waydroid app install "$1"
+    status=$?
+    echo
+    [ "$status" -eq 0 ] && echo "Android app installed." || echo "Android installation failed with status $status."
+    echo "Press Enter to close."
+    read line
+  ' sh "$package"
+fi
+xmessage -center -title "Android Runtime Required" "This is an Android APK, not an Alpine Linux package.
+
+Android apps require the optional Aurora Android Runtime (Waydroid), including binder support and a persistent Android system image. That runtime is not present in this lightweight RAM preview, so AuroraOS did not modify the file or pretend it was installed.
+
+Native Alpine .apk packages still install normally." 2>/dev/null || true
+exit 4
+''',
+        0o755,
+    )
+    write_file(
+        "/usr/bin/aurora-open-dmg-file",
+        r'''#!/bin/sh
+dmg="$1"
+[ -f "$dmg" ] || exit 1
+name="$(basename "$dmg")"
+name="${name%.[dD][mM][gG]}"
+target="/tmp/firefox-home/Downloads/${name}-extracted"
+xmessage -center -buttons "Extract:1,Cancel:0" -title "Open Apple Disk Image" "Extract files from this Apple disk image?\n\n$dmg\n\nmacOS applications can be inspected but cannot run on Linux." 2>/dev/null
+[ "$?" = 1 ] || exit 0
+mkdir -p "$target"
+if command -v 7zz >/dev/null 2>&1; then
+  extractor=7zz
+elif command -v 7z >/dev/null 2>&1; then
+  extractor=7z
+else
+  xmessage -center -title "DMG Support" "The 7-Zip extractor is missing from this image." 2>/dev/null || true
+  exit 127
+fi
+exec xterm -geometry 112x32+100+90 -title "Extract Apple Disk Image" -e sh -c '
+  "$1" x -y -o"$3" "$2"
+  status=$?
+  echo
+  if [ "$status" -eq 0 ]; then
+    echo "Extracted to: $3"
+    DISPLAY="${DISPLAY:-:0}" /usr/bin/aurora-explorer "$3" >/tmp/aurora-dmg-explorer.log 2>&1 &
+  else
+    echo "Extraction failed with status $status."
+  fi
+  echo "macOS .app programs cannot run on Linux."
+  echo "Press Enter to close."
+  read line
+' sh "$extractor" "$dmg" "$target"
+''',
+        0o755,
+    )
+    write_file(
+        "/usr/bin/aurora-install-exe-shortcut",
+        r'''#!/bin/sh
+exe="$1"
+[ -f "$exe" ] || exit 1
+export EXE_PATH="$exe"
+launcher=$(python3 - <<'PY'
+import os, re, shlex
+from pathlib import Path
+
+exe = Path(os.environ["EXE_PATH"]).resolve()
+name = exe.stem or "Windows Application"
+launcher_id = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "windows-app"
+desktop = Path("/tmp/firefox-home/Desktop")
+idesktop = Path("/tmp/firefox-home/.idesktop")
+desktop.mkdir(parents=True, exist_ok=True)
+idesktop.mkdir(parents=True, exist_ok=True)
+command = f"/usr/bin/aurora-run-exe-file {shlex.quote(str(exe))}"
+slot = len(list(idesktop.glob("windows-*.lnk")))
+icon_x = 680 + (slot % 3) * 220
+icon_y = 60 + (slot // 3) * 130
+(desktop / f"{launcher_id}.desktop").write_text(
+    "[Desktop Entry]\n"
+    "Type=Application\n"
+    f"Name={name}\n"
+    f"Comment=Windows application: {exe.name}\n"
+    f"Exec={command}\n"
+    "Icon=/usr/share/aurora/icons/executable-48.png\n"
+    "Terminal=false\n"
+    "Categories=Wine;AuroraOS98;\n"
+)
+(desktop / f"{launcher_id}.desktop").chmod(0o755)
+(idesktop / f"windows-{launcher_id}.lnk").write_text(
+    "table Icon\n"
+    f"  Caption: {name}\n"
+    f"  ToolTip.Caption: Run {exe.name} with Wine\n"
+    "  Icon: /usr/share/aurora/icons/executable-48.png\n"
+    f"  X: {icon_x}\n"
+    f"  Y: {icon_y}\n"
+    f"  Command[0]: {command}\n"
+    "end\n"
+)
+print(desktop / f"{launcher_id}.desktop")
+PY
+) || exit 1
+pkill idesk 2>/dev/null || true
+DISPLAY="${DISPLAY:-:0}" /usr/bin/aurora-desktop-icons >/tmp/aurora-desktop-icons.log 2>&1 &
+xmessage -center -title "Windows App Installed" "Desktop shortcut created:\n\n$launcher" 2>/dev/null || true
+''',
+        0o755,
+    )
+    write_file(
         "/usr/bin/aurora-run-exe-file",
         """#!/bin/sh
 exe="$1"
+[ -f "$exe" ] || {
+  xmessage -center -title "Windows EXE Support" "Executable not found:\n\n$exe" 2>/dev/null || true
+  exit 1
+}
 if ! command -v wine >/dev/null 2>&1; then
   xmessage -center -title "Windows EXE Support" "Wine is not installed.
 
 Open Package Center and choose Windows EXE support." 2>/dev/null || true
   exit 0
 fi
-xmessage -center -buttons "Run with Wine:1,Cancel:0" -title "Run Windows EXE" "Run this Windows executable with Wine?
+xmessage -center -buttons "Run + Add to Desktop:1,Run Once:2,Cancel:0" -title "Run Windows EXE" "Run this Windows executable with Wine?
 
 $exe" 2>/dev/null
-[ "$?" = 1 ] || exit 0
-exec wine "$exe"
+choice="$?"
+[ "$choice" = 0 ] && exit 0
+
+description=$(file -b "$exe" 2>/dev/null || true)
+if ! printf '%s' "$description" | grep -Eqi 'PE32|MS Windows'; then
+  xmessage -center -title "Windows Architecture" "This file is not a recognized Windows executable.
+
+Detected file:
+$description" 2>/dev/null || true
+  exit 1
+fi
+if [ "$(uname -m)" = "aarch64" ] && printf '%s' "$description" | grep -Eqi 'Intel 80386|x86-64|x86_64'; then
+  xmessage -center -title "Windows Architecture" "This is an x86/x64 Windows program, but the fast AuroraOS VM is ARM64.
+
+This executable needs the x86-64 AuroraOS build. Download a Windows ARM64 version for the fast ARM VM.
+
+Detected file:
+$description" 2>/dev/null || true
+  exit 1
+fi
+if [ "$(uname -m)" = "aarch64" ] && ! printf '%s' "$description" | grep -Eqi 'Aarch64|ARM64'; then
+  xmessage -center -title "Windows Architecture" "AuroraOS could not confirm that this is a Windows ARM64 executable.
+
+No desktop shortcut was created.
+
+Detected file:
+$description" 2>/dev/null || true
+  exit 1
+fi
+
+if [ "$(uname -m)" = "aarch64" ]; then
+  export WINEARCH=win64
+fi
+
+[ "$choice" = 1 ] && /usr/bin/aurora-install-exe-shortcut "$exe"
+
+mkdir -p /tmp/firefox-home/.wine
+export HOME=/tmp/firefox-home
+export WINEPREFIX=/tmp/firefox-home/.wine
+export WINEDEBUG=-all
+wineboot -u >/tmp/aurora-wine.log 2>&1 || true
+wine start /unix "$exe" >>/tmp/aurora-wine.log 2>&1
+status="$?"
+if [ "$status" -ne 0 ]; then
+  xmessage -center -title "Wine Launch Failed" "Wine could not start this executable (status $status).
+
+$(tail -n 14 /tmp/aurora-wine.log 2>/dev/null)" 2>/dev/null || true
+fi
+exit "$status"
 """,
         0o755,
     )
@@ -1563,9 +1923,172 @@ exec xterm -geometry 100x30+100+90 -title "Run AppImage" -e sh -c '
         0o755,
     )
     write_file(
+        "/usr/bin/aurora-debian-runtime",
+        r'''#!/bin/sh
+root=/opt/aurora-debian
+[ -x "$root/usr/bin/apt-get" ] || {
+  echo "Aurora Debian runtime is not installed." >&2
+  exit 127
+}
+
+bind_mount() {
+  source="$1"
+  target="$root$2"
+  mkdir -p "$target"
+  grep -qs " $target " /proc/mounts || mount --bind "$source" "$target"
+}
+
+bind_mount /dev /dev
+bind_mount /dev/pts /dev/pts
+bind_mount /proc /proc
+bind_mount /sys /sys
+bind_mount /run /run
+bind_mount /tmp /tmp
+rm -f "$root/etc/resolv.conf"
+cp /etc/resolv.conf "$root/etc/resolv.conf" 2>/dev/null || true
+
+exec chroot "$root" /usr/bin/env \
+  HOME=/tmp/firefox-home \
+  USER=root \
+  LOGNAME=root \
+  DISPLAY="${DISPLAY:-:0}" \
+  XDG_RUNTIME_DIR=/run/user/0 \
+  DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/0/bus}" \
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  "$@"
+''',
+        0o755,
+    )
+    write_file(
+        "/usr/bin/aurora-debian-app",
+        r'''#!/bin/sh
+[ "$#" -gt 0 ] || exit 2
+exec /usr/bin/aurora-debian-runtime "$@"
+''',
+        0o755,
+    )
+    write_file(
+        "/usr/bin/aurora-refresh-debian-apps",
+        r'''#!/usr/bin/python3
+from __future__ import annotations
+
+import configparser
+import os
+import re
+import shlex
+import sys
+from pathlib import Path
+
+ROOT = Path("/opt/aurora-debian")
+APPLICATIONS = Path("/tmp/firefox-home/Applications")
+DESKTOP = Path("/tmp/firefox-home/Desktop")
+IDESKTOP = Path("/tmp/firefox-home/.idesktop")
+
+
+def runtime_path(path: str) -> Path:
+    return ROOT / path.lstrip("/")
+
+
+def resolve_icon(value: str) -> str:
+    if not value:
+        return "/usr/share/aurora/icons/installer-48.png"
+    if value.startswith("/") and runtime_path(value).exists():
+        return str(runtime_path(value))
+    for suffix in (".png", ".svg", ".xpm", ""):
+        for base in (ROOT / "usr/share/pixmaps", ROOT / "usr/share/icons/hicolor/256x256/apps", ROOT / "usr/share/icons/hicolor/128x128/apps", ROOT / "usr/share/icons/hicolor/64x64/apps", ROOT / "usr/share/icons/hicolor/48x48/apps"):
+            candidate = base / f"{value}{suffix}"
+            if candidate.is_file():
+                return str(candidate)
+    return "/usr/share/aurora/icons/installer-48.png"
+
+
+def command_from_exec(raw: str) -> list[str]:
+    command = []
+    for token in shlex.split(raw):
+        if token.startswith("%"):
+            continue
+        token = re.sub(r"%[fFuUdDnNickvm]", "", token)
+        if token:
+            command.append(token)
+    if command and Path(command[0]).name in {"code", "code-insiders"} and "--no-sandbox" not in command:
+        command.append("--no-sandbox")
+    return command
+
+
+def install_launcher(source: Path, desktop: bool = False) -> Path | None:
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    parser.optionxform = str
+    try:
+        parser.read(source, encoding="utf-8")
+        entry = parser["Desktop Entry"]
+    except (OSError, KeyError, configparser.Error):
+        return None
+    if entry.get("Type", "Application") != "Application" or entry.get("NoDisplay", "false").lower() == "true":
+        return None
+    command = command_from_exec(entry.get("Exec", ""))
+    if not command:
+        return None
+    name = entry.get("Name", source.stem)
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or source.stem
+    target_dir = DESKTOP if desktop else APPLICATIONS
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / f"{safe}.desktop"
+    icon = resolve_icon(entry.get("Icon", ""))
+    target.write_text(
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        f"Name={name}\n"
+        f"Comment=Debian ARM64 application\n"
+        f"Exec=/usr/bin/aurora-debian-app {shlex.join(command)}\n"
+        f"Icon={icon}\n"
+        "Terminal=false\n"
+        "Categories=Debian;AuroraOS98;\n"
+    )
+    target.chmod(0o755)
+    if desktop:
+        IDESKTOP.mkdir(parents=True, exist_ok=True)
+        (IDESKTOP / f"debian-{safe}.lnk").write_text(
+            "table Icon\n"
+            f"  Caption: {name}\n"
+            f"  ToolTip.Caption: Open {name}\n"
+            f"  Icon: {icon}\n"
+            "  X: 900\n"
+            "  Y: 320\n"
+            f"  Command[0]: /usr/bin/aurora-debian-app {shlex.join(command)}\n"
+            "end\n"
+        )
+    return target
+
+
+package = sys.argv[1] if len(sys.argv) > 1 else ""
+package_desktops: set[Path] = set()
+if package:
+    package_list = ROOT / "var/lib/dpkg/info" / f"{package}.list"
+    if package_list.exists():
+        for line in package_list.read_text(errors="ignore").splitlines():
+            if line.endswith(".desktop"):
+                candidate = runtime_path(line)
+                if candidate.is_file():
+                    package_desktops.add(candidate)
+
+created = []
+for source in sorted((ROOT / "usr/share/applications").glob("*.desktop")):
+    target = install_launcher(source, desktop=source in package_desktops and not created)
+    if target:
+        created.append(target)
+print(created[0] if created else "")
+''',
+        0o755,
+    )
+    write_file(
         "/usr/bin/aurora-run-deb-file",
-        """#!/bin/sh
+        r'''#!/bin/sh
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 deb="$1"
+[ -f "$deb" ] || {
+  xmessage -center -title "Install DEB Package" "The selected package no longer exists." 2>/dev/null
+  exit 1
+}
 xmessage -center -buttons "Install:1,Cancel:0" -title "Install DEB Package" "Install this Debian package?
 
 $deb
@@ -1578,26 +2101,74 @@ echo "======================"
 echo
 echo "Package: $1"
 echo
-if ! command -v dpkg >/dev/null 2>&1; then
-  echo "dpkg is not installed in this image."
+runtime=/usr/bin/aurora-debian-runtime
+if [ ! -x "$runtime" ] || [ ! -x /opt/aurora-debian/usr/bin/apt-get ]; then
+  echo "ERROR: The Debian 13 ARM64 runtime is missing from this image."
+  code=127
 else
-  echo "Running: dpkg -i $1"
+  package_arch="$($runtime dpkg-deb -f "$1" Architecture 2>/dev/null)"
+  machine="$(uname -m)"
+  case "$machine:$package_arch" in
+    aarch64:arm64|x86_64:amd64|*:all) ;;
+    *)
+      echo "ERROR: This is a $package_arch package, but AuroraOS is running on $machine."
+      echo "Download the matching architecture and try again."
+      echo
+      echo "Press Enter to close."
+      read line
+      exit 2
+      ;;
+  esac
+
+  package_name="$($runtime dpkg-deb -f "$1" Package 2>/dev/null)"
+  installed_kb="$($runtime dpkg-deb -f "$1" Installed-Size 2>/dev/null)"
+  available_kb="$(df -Pk / | awk 'NR == 2 { print $4 }')"
+  case "$installed_kb:$available_kb" in
+    *[!0-9:]*|:*) ;;
+    *)
+      required_kb=$((installed_kb + 262144))
+      if [ "$available_kb" -lt "$required_kb" ]; then
+        echo "ERROR: Not enough guest memory-backed storage."
+        echo "Package requires about $((required_kb / 1024)) MB including install workspace."
+        echo "Available: $((available_kb / 1024)) MB."
+        echo "Restart AuroraOS with AURORA_ARM_QEMU_MEMORY=12288M or higher."
+        echo
+        echo "Press Enter to close."
+        read line
+        exit 3
+      fi
+      ;;
+  esac
+  echo "Package name: ${package_name:-unknown}"
+  echo "Architecture: ${package_arch:-unknown}"
+  echo "Runtime: Debian 13 ARM64 / glibc"
+  echo "Resolving dependencies and installing Debian package..."
   echo
-  dpkg -i "$1"
-  code=$?
-  echo
-  if [ "$code" -eq 0 ]; then
-    echo "Install finished."
-  else
-    echo "Install failed. Many .deb packages require Debian/glibc dependencies."
-    echo "Use native APK packages for system components where possible."
+  if [ ! -f /opt/aurora-debian/var/lib/apt/lists/.aurora-ready ]; then
+    $runtime apt-get update && touch /opt/aurora-debian/var/lib/apt/lists/.aurora-ready
   fi
+  $runtime env DEBIAN_FRONTEND=noninteractive apt-get install \
+    --no-install-recommends -y "$1"
+  code=$?
+  $runtime apt-get clean >/dev/null 2>&1 || true
+  echo
+fi
+
+if [ "$code" -eq 0 ]; then
+  launcher=$(/usr/bin/aurora-refresh-debian-apps "$package_name")
+  pkill idesk 2>/dev/null || true
+  DISPLAY=:0 /usr/bin/aurora-desktop-icons >/tmp/aurora-desktop-icons.log 2>&1 &
+  echo "Install finished using the Debian 13 ARM64 runtime."
+  [ -n "$launcher" ] && echo "Application launcher: $launcher"
+else
+  echo "Install failed. The package may need unavailable dependencies, more"
+  echo "temporary VM memory, or unsupported install scripts. Review apt above."
 fi
 echo
 echo "Press Enter to close."
 read line
 ' sh "$deb"
-""",
+''',
         0o755,
     )
     write_file(
@@ -1644,6 +2215,18 @@ Exec=/usr/bin/aurora-launch-code
 Icon=accessories-text-editor
 Terminal=false
 Categories=Development;IDE;AuroraOS98;
+""",
+    )
+    write_file(
+        "/usr/share/applications/aurora-godot.desktop",
+        """[Desktop Entry]
+Type=Application
+Name=Godot Engine
+Comment=Create 2D and 3D games
+Exec=/usr/bin/aurora-launch-godot
+Icon=godot
+Terminal=false
+Categories=Development;Game;IDE;AuroraOS98;
 """,
     )
     write_file(
@@ -1746,12 +2329,25 @@ Categories=Utility;Archiving;AuroraOS98;
         """[Desktop Entry]
 Type=Application
 Name=Install Native Package
-Exec=/usr/bin/aurora-install-apk-file %f
+Exec=/usr/bin/aurora-open-apk-file %f
 Icon=system-software-install
 Terminal=false
 NoDisplay=false
-MimeType=application/vnd.alpine.apk;application/x-alpine-package;
+MimeType=application/vnd.alpine.apk;application/x-alpine-package;application/vnd.android.package-archive;
 Categories=System;PackageManager;AuroraOS98;
+""",
+    )
+    write_file(
+        "/usr/share/applications/aurora-open-dmg.desktop",
+        """[Desktop Entry]
+Type=Application
+Name=Extract Apple Disk Image
+Exec=/usr/bin/aurora-open-dmg-file %f
+Icon=drive-harddisk
+Terminal=false
+NoDisplay=false
+MimeType=application/x-apple-diskimage;application/x-dmg;
+Categories=Utility;Archiving;AuroraOS98;
 """,
     )
     write_file(
@@ -1790,6 +2386,9 @@ application/x-xz=aurora-archive-manager.desktop
 application/x-bzip2=aurora-archive-manager.desktop
 application/vnd.alpine.apk=aurora-install-apk.desktop
 application/x-alpine-package=aurora-install-apk.desktop
+application/vnd.android.package-archive=aurora-install-apk.desktop
+application/x-apple-diskimage=aurora-open-dmg.desktop
+application/x-dmg=aurora-open-dmg.desktop
 application/x-desktop=aurora-launch-desktop-file.desktop
 application/x-desktop-item=aurora-launch-desktop-file.desktop
 
@@ -1811,6 +2410,9 @@ application/x-xz=aurora-archive-manager.desktop;
 application/x-bzip2=aurora-archive-manager.desktop;
 application/vnd.alpine.apk=aurora-install-apk.desktop;
 application/x-alpine-package=aurora-install-apk.desktop;
+application/vnd.android.package-archive=aurora-install-apk.desktop;
+application/x-apple-diskimage=aurora-open-dmg.desktop;
+application/x-dmg=aurora-open-dmg.desktop;
 application/x-desktop=aurora-launch-desktop-file.desktop;
 application/x-desktop-item=aurora-launch-desktop-file.desktop;
 """,
@@ -1821,7 +2423,7 @@ application/x-desktop-item=aurora-launch-desktop-file.desktop;
 user_pref("browser.download.dir", "/tmp/firefox-home/Downloads");
 user_pref("browser.download.useDownloadDir", true);
 user_pref("browser.download.alwaysOpenPanel", false);
-user_pref("browser.helperApps.neverAsk.saveToDisk", "application/x-ms-dos-executable,application/x-msdownload,application/vnd.microsoft.portable-executable,application/vnd.appimage,application/vnd.debian.binary-package,application/x-deb,application/vnd.alpine.apk,application/x-alpine-package,application/zip,application/x-7z-compressed,application/octet-stream,application/x-executable,application/x-sh");
+user_pref("browser.helperApps.neverAsk.saveToDisk", "application/x-ms-dos-executable,application/x-msdownload,application/vnd.microsoft.portable-executable,application/vnd.appimage,application/vnd.debian.binary-package,application/x-deb,application/vnd.alpine.apk,application/x-alpine-package,application/vnd.android.package-archive,application/x-apple-diskimage,application/x-dmg,application/zip,application/x-7z-compressed,application/octet-stream,application/x-executable,application/x-sh");
 user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("browser.startup.homepage_override.mstone", "ignore");
 user_pref("browser.startup.page", 0);
@@ -1980,6 +2582,18 @@ class AuroraApp(tk.Tk):
     def __init__(self, title, size="1180x760"):
         super().__init__()
         self.title(title)
+        icon_names = {
+            "Aurora Settings": "settings-48.png",
+            "Aurora Package Center": "package-center-48.png",
+            "Aurora Task View": "taskbar-48.png",
+            "Aurora System Monitor": "computer-48.png",
+        }
+        icon_path = os.path.join("/usr/share/aurora/icons", icon_names.get(title, "computer-48.png"))
+        try:
+            self._window_icon = tk.PhotoImage(file=icon_path)
+            self.iconphoto(True, self._window_icon)
+        except tk.TclError:
+            self._window_icon = None
         if COMPACT:
             width = self.winfo_screenwidth()
             height = max(320, self.winfo_screenheight() - 46)
@@ -2011,7 +2625,7 @@ class AuroraApp(tk.Tk):
         return frame
 
 class Settings(AuroraApp):
-    pages = ["System", "Network & Wi-Fi", "Sound", "Appearance", "Apps", "Workspaces"]
+    pages = ["System", "Network & Wi-Fi", "Sound", "Appearance", "Wallpaper", "Apps", "Workspaces"]
 
     def __init__(self):
         super().__init__("Aurora Settings")
@@ -2090,7 +2704,7 @@ class Settings(AuroraApp):
         self.heading(self.content, "Sound", "Output volume and interface sounds")
         card = self.card(self.content, "Output")
         card.pack(fill="x")
-        self.row(card, "Device", "QEMU ES1370 / host audio")
+        self.row(card, "Device", "QEMU VirtIO Sound / host audio")
         scale = tk.Scale(card, from_=0, to=100, orient="horizontal", length=600,
                          bg=PANEL, fg=TEXT, troughcolor="#444", highlightthickness=0)
         scale.set(80)
@@ -2101,16 +2715,65 @@ class Settings(AuroraApp):
         self.heading(self.content, "Appearance", "Desktop scale, wallpaper, and window style")
         card = self.card(self.content, "Current appearance")
         card.pack(fill="x")
-        self.row(card, "Wallpaper", "/usr/share/aurora/wallpaper.jpg")
+        state = read(HOME + "/.config/aurora/wallpaper", "/usr/share/aurora/wallpaper.jpg")
+        self.row(card, "Wallpaper", state)
         self.row(card, "Interface scale", "Large (144 DPI)")
         self.row(card, "Window manager", "JWM")
         self.row(card, "Theme", "Aurora dark classic")
+        button(card, "Wallpaper settings", lambda: self.show("Wallpaper")).pack(anchor="w", pady=(14, 0))
+
+    def page_wallpaper(self):
+        self.heading(self.content, "Wallpaper", "Choose the desktop background and apply it immediately")
+        card = self.card(self.content, "Desktop background")
+        card.pack(fill="x", pady=(0, 16))
+        current = read(HOME + "/.config/aurora/wallpaper", "/usr/share/aurora/wallpaper.jpg")
+        self.wallpaper_value = tk.StringVar(value=current)
+        tk.Label(card, textvariable=self.wallpaper_value, bg=PANEL, fg=TEXT,
+                 anchor="w", justify="left", wraplength=760).pack(fill="x", pady=(0, 14))
+        actions = tk.Frame(card, bg=PANEL)
+        actions.pack(fill="x")
+        button(actions, "Choose picture...", self.choose_wallpaper).pack(side="left", padx=(0, 10))
+        button(actions, "Restore Aurora wallpaper", self.restore_wallpaper).pack(side="left")
+        note = self.card(self.content, "Supported pictures")
+        note.pack(fill="x")
+        tk.Label(note, text="JPEG and PNG images are supported. The selected picture is copied into your Aurora profile and displayed using Fill mode.",
+                 bg=PANEL, fg=MUTED, anchor="w", justify="left", wraplength=820).pack(fill="x")
+
+    def choose_wallpaper(self):
+        selected = filedialog.askopenfilename(
+            parent=self, title="Choose wallpaper", initialdir=HOME + "/Pictures",
+            filetypes=[("Pictures", "*.jpg *.jpeg *.png"), ("All files", "*")]
+        )
+        if selected:
+            self.apply_wallpaper(selected)
+
+    def restore_wallpaper(self):
+        self.apply_wallpaper("/usr/share/aurora/wallpaper.jpg", copy_picture=False)
+
+    def apply_wallpaper(self, source, copy_picture=True):
+        try:
+            source_path = os.path.abspath(source)
+            if copy_picture:
+                target_dir = HOME + "/.local/share/aurora"
+                os.makedirs(target_dir, exist_ok=True)
+                extension = os.path.splitext(source_path)[1].lower() or ".jpg"
+                target = target_dir + "/wallpaper" + extension
+                shutil.copy2(source_path, target)
+            else:
+                target = source_path
+            os.makedirs(HOME + "/.config/aurora", exist_ok=True)
+            with open(HOME + "/.config/aurora/wallpaper", "w") as handle:
+                handle.write(target)
+            subprocess.run(["feh", "--bg-fill", target], check=True)
+            self.wallpaper_value.set(target)
+        except Exception as error:
+            messagebox.showerror("Wallpaper", f"Could not apply wallpaper:\n{error}", parent=self)
 
     def page_apps(self):
         self.heading(self.content, "Apps", "Installed applications and file handlers")
         card = self.card(self.content, "Default applications")
         card.pack(fill="x")
-        for app in ["Firefox ESR", "VSCodium", "PCManFM Explorer", "Wine", "Python + pip", "Aurora Package Center"]:
+        for app in ["Firefox ESR", "VSCodium", "PCManFM Explorer", "Wine", "Debian 13 ARM64 runtime", "Python + pip", "Aurora Package Center"]:
             self.row(card, app, "Installed")
         button(self.content, "Open Package Center", lambda: run(["/usr/bin/aurora-package-center"])).pack(anchor="w", pady=16)
 
@@ -2134,6 +2797,7 @@ class PackageCenter(AuroraApp):
         ("VSCodium", "VS Code-compatible developer editor", "Installed", ["/usr/bin/aurora-code"]),
         ("Explorer", "Graphical file manager", "Installed", ["/usr/bin/aurora-explorer"]),
         ("Python + pip", "Programming runtime", "Installed", ["/usr/bin/aurora-terminal"]),
+        ("Debian ARM64 Apps", "Real glibc, apt, dpkg, and .deb runtime", "Installed", ["/usr/bin/aurora-app-info", "Debian ARM64 Apps", "Double-click an ARM64 .deb in Explorer to install it with dependencies."]),
         ("Windows EXE Support", "Wine compatibility layer", "Installed", ["/usr/bin/aurora-run-exe"]),
         ("Unity Hub", "Official proprietary installer", "Get", ["/usr/bin/aurora-unity-hub"]),
     ]
@@ -2250,6 +2914,8 @@ exec /usr/bin/aurora-control-center {mode}
             return "/usr/bin/aurora-launch-package-center"
         if name == "Firefox":
             return "/usr/bin/aurora-launch-firefox"
+        if name == "Godot Engine":
+            return "/usr/bin/aurora-launch-godot"
         if name == "Archive Manager":
             return "/usr/bin/aurora-launch-archive-manager"
         if name == "Run Windows EXE":
@@ -2269,6 +2935,29 @@ exec /usr/bin/aurora-control-center {mode}
         if name == "Install DEB":
             return with_click("/usr/bin/aurora-app-info 'Install DEB' 'Double-click a .deb file in Explorer to install it.'")
         return with_click(f"/usr/bin/aurora-app-info {shell_quote(name)} {shell_quote(status)}")
+
+    def menu_icon(name: str) -> str:
+        named = {
+            "Archive Manager": "/usr/share/aurora/icons/archive-48.png",
+            "Aurora Terminal": "/usr/share/aurora/icons/aurora-terminal.png",
+            "Code Editor": "/usr/share/pixmaps/vscodium.png",
+            "Control Panel": "/usr/share/aurora/icons/aurora-settings.png",
+            "Explorer": "/usr/share/aurora/icons/aurora-explorer.png",
+            "File Explorer": "/usr/share/aurora/icons/aurora-explorer.png",
+            "Firefox": "/usr/lib/firefox-esr/browser/chrome/icons/default/default64.png",
+            "Godot Engine": "/usr/share/aurora/icons/godot-64.png",
+            "Package Center": "/usr/share/aurora/icons/aurora-package-center.png",
+            "Run Windows EXE": "/usr/share/aurora/icons/executable-48.png",
+            "Settings": "/usr/share/aurora/icons/aurora-settings.png",
+            "System Monitor": "/usr/share/aurora/icons/computer-48.png",
+            "Task View": "/usr/share/aurora/icons/computer-48.png",
+            "Terminal": "/usr/share/aurora/icons/aurora-terminal.png",
+            "Unity Hub Installer": "/usr/share/aurora/icons/installer-48.png",
+            "VS Code": "/usr/share/pixmaps/vscodium.png",
+            "VSCodium": "/usr/share/pixmaps/vscodium.png",
+            "Wi-Fi Connection": "/usr/share/aurora/icons/network-48.png",
+        }
+        return named.get(name, "/usr/share/aurora/icons/executable-48.png")
 
     menu_items = "\n".join(
         f"""    <item label="{name}">
@@ -2296,40 +2985,55 @@ exec /usr/bin/aurora-control-center {mode}
 </openbox_menu>
 """,
     )
-    primary_menu_names = {"Explorer", "Settings", "Task View", "Package Center", "Terminal"}
-    jwm_items = "\n".join(
-        f"""      <Program label="{name}">{menu_command(name, status)}</Program>"""
-        for _, name, _, status in apps if name not in primary_menu_names
+    def jwm_program(name: str, status: str, indent: str = "    ") -> str:
+        return f'{indent}<Program label="{name}" icon="{menu_icon(name)}">{menu_command(name, status)}</Program>'
+
+    by_name = {name: status for _, name, _, status in apps}
+    development_items = "\n".join(
+        jwm_program(name, by_name[name], "      ")
+        for name in ("VSCodium", "Godot Engine", "Unity Hub Installer")
+    )
+    system_items = "\n".join(
+        jwm_program(name, by_name[name], "      ")
+        for name in ("Archive Manager", "System Monitor", "Run Windows EXE", "Install DEB")
     )
     write_file(
         "/etc/jwm/aurora.jwmrc",
         f"""<?xml version="1.0"?>
 <JWM>
   <RootMenu onroot="12">
-    <Program label="Explorer">/usr/bin/aurora-launch-explorer</Program>
-    <Program label="Settings">/usr/bin/aurora-launch-settings</Program>
-    <Program label="Task View">/usr/bin/aurora-launch-task-view</Program>
-    <Program label="Package Center">/usr/bin/aurora-launch-package-center</Program>
-    <Program label="Terminal">/usr/bin/aurora-launch-terminal</Program>
+    <Program label="Explorer" icon="/usr/share/aurora/icons/aurora-explorer.png">/usr/bin/aurora-launch-explorer</Program>
+    {jwm_program("Firefox", by_name["Firefox"])}
+    <Menu label="Development" icon="/usr/share/pixmaps/vscodium.png">
+{development_items}
+    </Menu>
     <Separator />
-{jwm_items}
+    <Program label="Settings" icon="/usr/share/aurora/icons/aurora-settings.png">/usr/bin/aurora-launch-settings</Program>
+    <Program label="Package Center" icon="/usr/share/aurora/icons/aurora-package-center.png">/usr/bin/aurora-launch-package-center</Program>
+    <Program label="Terminal" icon="/usr/share/aurora/icons/aurora-terminal.png">/usr/bin/aurora-launch-terminal</Program>
+    <Program label="Task View" icon="/usr/share/aurora/icons/computer-48.png">/usr/bin/aurora-launch-task-view</Program>
+    <Menu label="System Tools" icon="/usr/share/aurora/icons/settings-48.png">
+{system_items}
+    </Menu>
     <Separator />
     <Exit label="Shut Down AuroraOS 98" confirm="false" />
   </RootMenu>
 
-  <Tray x="0" y="-1" height="82" autohide="false">
-    <TrayButton label="Start">root:1</TrayButton>
-    <TrayButton label="Task View">exec:/usr/bin/aurora-launch-task-view</TrayButton>
-    <TrayButton label="Explorer">exec:/usr/bin/aurora-launch-explorer</TrayButton>
-    <TrayButton label="Firefox">exec:/usr/bin/aurora-launch-firefox</TrayButton>
-    <TrayButton label="Code">exec:/usr/bin/aurora-launch-code</TrayButton>
-    <TrayButton label="Settings">exec:/usr/bin/aurora-launch-settings</TrayButton>
-    <TrayButton label="Store">exec:/usr/bin/aurora-launch-package-center</TrayButton>
-    <TaskList maxwidth="620" />
-    <TrayButton label="1">exec:jwm -desktop 1</TrayButton>
-    <TrayButton label="2">exec:jwm -desktop 2</TrayButton>
-    <TrayButton label="3">exec:jwm -desktop 3</TrayButton>
-    <TrayButton label="4">exec:jwm -desktop 4</TrayButton>
+  <Tray x="0" y="-1" height="72" autohide="false">
+    <TrayButton icon="/usr/share/aurora/icons/aurora-control-panel.png" popup="Start">root:1</TrayButton>
+    <TrayButton icon="/usr/share/aurora/icons/computer-48.png" popup="Task View">exec:/usr/bin/aurora-launch-task-view</TrayButton>
+    <TrayButton icon="/usr/share/aurora/icons/aurora-explorer.png" popup="Aurora Explorer">exec:/usr/bin/aurora-launch-explorer</TrayButton>
+    <TrayButton icon="/usr/lib/firefox-esr/browser/chrome/icons/default/default64.png" popup="Firefox">exec:/usr/bin/aurora-launch-firefox</TrayButton>
+    <TrayButton icon="/usr/share/pixmaps/vscodium.png" popup="VSCodium">exec:/usr/bin/aurora-launch-code</TrayButton>
+    <TrayButton icon="/usr/share/aurora/icons/aurora-settings.png" popup="Settings">exec:/usr/bin/aurora-launch-settings</TrayButton>
+    <TrayButton icon="/usr/share/aurora/icons/aurora-package-center.png" popup="Package Center">exec:/usr/bin/aurora-launch-package-center</TrayButton>
+    <TaskList maxwidth="64" labeled="false" />
+    <Spacer width="10" />
+    <TrayButton label="[1]" popup="Desktop 1">exec:jwm -desktop 1</TrayButton>
+    <TrayButton label="[2]" popup="Desktop 2">exec:jwm -desktop 2</TrayButton>
+    <TrayButton label="[3]" popup="Desktop 3">exec:jwm -desktop 3</TrayButton>
+    <TrayButton label="[4]" popup="Desktop 4">exec:jwm -desktop 4</TrayButton>
+    <Spacer width="10" />
     <Dock />
     <Clock format="%I:%M %p">xclock</Clock>
   </Tray>
@@ -2371,8 +3075,11 @@ exec /usr/bin/aurora-control-center {mode}
   </MenuStyle>
   <Background type="solid">#111111</Background>
   <FocusModel>click</FocusModel>
+  <Key key="Super_L">root:1</Key>
+  <Key mask="C" key="Escape">root:1</Key>
   <Key key="F8">exec:/usr/bin/aurora-launch-code</Key>
   <Key key="F9">exec:/usr/bin/aurora-launch-settings</Key>
+  <Key key="F10">exec:/usr/bin/aurora-launch-godot</Key>
   <Key key="F7">exec:/usr/bin/aurora-launch-firefox</Key>
   <Key key="F6">exec:/usr/bin/aurora-launch-archive-manager</Key>
   <Key key="F5">exec:/usr/bin/aurora-launch-explorer /tmp/firefox-home/Downloads</Key>
@@ -2405,13 +3112,20 @@ Categories=AuroraOS98;{category.replace(" ", "")};
 def force_busybox_applets() -> None:
     applets = [
         "awk",
+        "basename",
         "cat",
         "chmod",
+        "chroot",
         "clear",
         "cp",
         "cut",
         "date",
+        "df",
+        "diff",
+        "dirname",
+        "env",
         "httpd",
+        "id",
         "ifconfig",
         "ip",
         "kill",
@@ -2422,21 +3136,29 @@ def force_busybox_applets() -> None:
         "mkdir",
         "mknod",
         "mdev",
+        "mktemp",
         "modprobe",
         "mount",
         "mv",
         "pidof",
         "ping",
         "printf",
+        "readlink",
+        "realpath",
+        "rm",
         "route",
         "sed",
         "sh",
         "sleep",
+        "sort",
+        "tail",
+        "test",
         "touch",
         "tr",
         "udhcpc",
         "uname",
         "wget",
+        "whoami",
     ]
     busybox = ROOTFS / "bin" / "busybox"
     if not busybox.exists():
@@ -2446,6 +3168,10 @@ def force_busybox_applets() -> None:
         if link.exists() or link.is_symlink():
             link.unlink()
         link.symlink_to("busybox")
+    usr_env = ROOTFS / "usr" / "bin" / "env"
+    if usr_env.exists() or usr_env.is_symlink():
+        usr_env.unlink()
+    usr_env.symlink_to("/bin/busybox")
 
 
 def configure_rootfs(packages: list[dict] | None = None) -> None:
@@ -2459,11 +3185,21 @@ def configure_rootfs(packages: list[dict] | None = None) -> None:
     archive_manager = ROOTFS / "usr" / "bin" / "aurora-archive-manager"
     shutil.copy2(ROOT / "src" / "aurora-explorer" / "archive_manager.py", archive_manager)
     archive_manager.chmod(0o755)
+    explorer_gui = ROOTFS / "usr" / "bin" / "aurora-explorer-gui"
+    shutil.copy2(ROOT / "src" / "aurora-explorer" / "explorer.py", explorer_gui)
+    explorer_gui.chmod(0o755)
     write_file(
         "/etc/apk/repositories",
         """https://dl-cdn.alpinelinux.org/alpine/edge/main
 https://dl-cdn.alpinelinux.org/alpine/edge/community
 """,
+    )
+    write_file(
+        "/etc/sudoers.d/aurora",
+        """root ALL=(ALL:ALL) NOPASSWD: ALL
+%wheel ALL=(ALL:ALL) ALL
+""",
+        mode=0o440,
     )
     large_cursor = """#define aurora_cursor_width 32
 #define aurora_cursor_height 32
@@ -2579,6 +3315,7 @@ cp /usr/share/aurora/mimeapps.list /tmp/firefox-home/.config/mimeapps.list 2>/de
 cp /usr/share/aurora/firefox-user.js /tmp/firefox-home/profile/user.js 2>/dev/null || true
 cp /usr/share/applications/aurora-explorer.desktop /tmp/firefox-home/Desktop/Aurora-Explorer.desktop 2>/dev/null || true
 cp /usr/share/applications/aurora-code.desktop /tmp/firefox-home/Desktop/Code-Editor.desktop 2>/dev/null || true
+cp /usr/share/applications/aurora-godot.desktop /tmp/firefox-home/Desktop/Godot-Engine.desktop 2>/dev/null || true
 cp /usr/share/applications/aurora-unity-hub.desktop /tmp/firefox-home/Desktop/Unity-Hub-Installer.desktop 2>/dev/null || true
 cp /usr/share/applications/firefox-esr.desktop /tmp/firefox-home/Desktop/Firefox.desktop 2>/dev/null || true
 cp /usr/share/applications/aurora-settings.desktop /tmp/firefox-home/Desktop/Settings.desktop 2>/dev/null || true
@@ -2587,6 +3324,7 @@ cp /usr/share/applications/aurora-terminal.desktop /tmp/firefox-home/Desktop/Ter
 cp /usr/share/applications/aurora-package-center.desktop /tmp/firefox-home/Desktop/Package-Center.desktop 2>/dev/null || true
 cp /usr/share/applications/aurora-explorer.desktop /tmp/firefox-home/Applications/Aurora-Explorer.desktop 2>/dev/null || true
 cp /usr/share/applications/aurora-code.desktop /tmp/firefox-home/Applications/Code-Editor.desktop 2>/dev/null || true
+cp /usr/share/applications/aurora-godot.desktop /tmp/firefox-home/Applications/Godot-Engine.desktop 2>/dev/null || true
 cp /usr/share/applications/aurora-unity-hub.desktop /tmp/firefox-home/Applications/Unity-Hub-Installer.desktop 2>/dev/null || true
 cp /usr/share/applications/aurora-settings.desktop /tmp/firefox-home/Applications/Settings.desktop 2>/dev/null || true
 cp /usr/share/applications/aurora-task-view.desktop /tmp/firefox-home/Applications/Task-View.desktop 2>/dev/null || true
@@ -2594,6 +3332,8 @@ cp /usr/share/applications/aurora-terminal.desktop /tmp/firefox-home/Application
 chmod +x /tmp/firefox-home/Desktop/*.desktop /tmp/firefox-home/Applications/*.desktop 2>/dev/null || true
 update-desktop-database /usr/share/applications >/dev/console 2>&1 || true
 update-mime-database /usr/share/mime >/dev/console 2>&1 || true
+gdk-pixbuf-query-loaders --update-cache >/dev/console 2>&1 || true
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/console 2>&1 || true
 mkdir -p /lib/apk/db /var/cache/apk /etc/apk
 touch /lib/apk/db/installed /etc/apk/world
 chmod 1777 /tmp /tmp/.X11-unix /dev/shm
@@ -2616,6 +3356,10 @@ modprobe snd-pcm 2>/dev/null || true
 modprobe snd-timer 2>/dev/null || true
 modprobe snd-ac97-codec 2>/dev/null || true
 modprobe snd-ens1371 2>/dev/null || true
+modprobe snd-hda-codec 2>/dev/null || true
+modprobe snd-hda-codec-generic 2>/dev/null || true
+modprobe snd-hda-intel 2>/dev/null || true
+modprobe virtio_snd 2>/dev/null || true
 modprobe e1000 2>/dev/null || true
 modprobe e1000e 2>/dev/null || true
 modprobe virtio_net 2>/dev/null || true
@@ -2684,9 +3428,20 @@ sleep 1
 feh --bg-fill /usr/share/aurora/wallpaper.jpg >/var/log/wallpaper.log 2>&1 || true
 DISPLAY=:0 /usr/bin/aurora-desktop-icons >/var/log/aurora-desktop-icons.log 2>&1 &
 sleep 1
-alsactl init >/var/log/alsa-init.log 2>&1 || true
-amixer set Master unmute 80% >/dev/console 2>&1 || true
-amixer set PCM unmute 80% >/dev/console 2>&1 || true
+for i in 1 2 3 4 5; do
+    [ -s /proc/asound/cards ] && ! grep -q 'no soundcards' /proc/asound/cards && break
+    mdev -s 2>/dev/null || true
+    sleep 1
+done
+{
+    cat /proc/asound/cards 2>/dev/null || true
+    aplay -l 2>/dev/null || true
+    alsactl init 0 2>/dev/null || alsactl init 2>/dev/null || true
+    amixer -c 0 sset Master 80% unmute 2>/dev/null || true
+    amixer -c 0 sset Speaker 80% unmute 2>/dev/null || true
+    amixer -c 0 sset PCM 80% unmute 2>/dev/null || true
+} >/var/log/alsa-init.log 2>&1
+/usr/bin/aurora-startup-sound
 printf 'AuroraOS 98: usable JWM desktop is ready\\n' >/dev/console
 while true; do
     sleep 60
@@ -2713,6 +3468,13 @@ def normalize_for_cpio() -> None:
 def build_cpio() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     normalize_for_cpio()
+    # cpio must retain sudo's privilege boundary after host-side APK extraction.
+    sudo_binary = ROOTFS / "usr" / "bin" / "sudo"
+    if sudo_binary.exists():
+        sudo_binary.chmod(0o4755)
+    for policy in (ROOTFS / "etc" / "sudoers", ROOTFS / "etc" / "sudoers.d" / "aurora"):
+        if policy.exists():
+            policy.chmod(0o440)
     find = subprocess.Popen(["find", "."], cwd=ROOTFS, stdout=subprocess.PIPE)
     cpio = subprocess.Popen(["cpio", "-o", "-H", "newc", "-R", "0:0"], cwd=ROOTFS, stdin=find.stdout, stdout=subprocess.PIPE)
     compressor = subprocess.Popen(["lz4", "-l", "-1", "-q"], stdin=cpio.stdout, stdout=open(OUT, "wb"))
@@ -2734,6 +3496,7 @@ def build() -> None:
     paths = download_packages(packages)
     reset_rootfs()
     extract_packages(paths)
+    install_debian_runtime()
     configure_rootfs(packages)
     build_cpio()
 

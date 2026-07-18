@@ -17,6 +17,11 @@ class ArchiveManager:
         self.destination: Path | None = None
         self.root = tk.Tk()
         self.root.title(f"Aurora Archive Manager - {self.archive.name}")
+        try:
+            self.window_icon = tk.PhotoImage(file="/usr/share/aurora/icons/archive-48.png")
+            self.root.iconphoto(True, self.window_icon)
+        except tk.TclError:
+            self.window_icon = None
         self.root.geometry("1040x680+150+90")
         self.root.configure(bg="#202020")
         self.root.option_add("*Font", ("MS W98 UI", 15))
@@ -118,12 +123,18 @@ class ArchiveManager:
                     archive.extractall(destination, filter="data")
             else:
                 subprocess.run(["7z", "x", "-y", f"-o{destination}", str(self.archive)], check=True)
+            destination.chmod(destination.stat().st_mode | 0o755)
             for path in destination.rglob("*"):
-                if path.is_file() and path.suffix in {"", ".sh", ".AppImage"}:
-                    path.chmod(path.stat().st_mode | 0o111)
+                if path.is_dir():
+                    path.chmod(path.stat().st_mode | 0o755)
+                elif path.is_file():
+                    path.chmod(path.stat().st_mode | 0o644)
+                    if path.suffix in {"", ".sh", ".AppImage"}:
+                        path.chmod(path.stat().st_mode | 0o111)
             self.destination = destination
             self.status.set(f"Extracted to {destination}")
             messagebox.showinfo("Extraction Complete", f"Files extracted to:\n{destination}", parent=self.root)
+            self.open_destination()
         except Exception as error:
             self.status.set("Extraction failed")
             messagebox.showerror("Extraction Failed", str(error), parent=self.root)

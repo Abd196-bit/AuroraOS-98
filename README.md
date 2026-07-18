@@ -19,12 +19,13 @@ AuroraOS 98 is an experimental Linux operating-system environment for x86-64 PCs
 - PCManFM graphical file explorer
 - native graphical Aurora Settings, Package Center, Task View, and System Monitor
 - Wine launcher for Windows executables
-- handlers for `.deb`, AppImage, shell scripts, and Linux executables
+- handlers for `.deb`, AppImage, Alpine/Android `.apk`, `.dmg`, shell scripts, and Linux executables
 - graphical ZIP, 7-Zip, RAR, tar, gzip, bzip2, and xz archive handling
 - Alpine `.apk` installation from the file explorer
+- embedded Debian 13 ARM64/glibc runtime with `apt` dependency resolution for ARM64 `.deb` files
 - Python 3 and pip
 - NetworkManager tools, Wi-Fi controls for real hardware, and QEMU Ethernet networking
-- ALSA/QEMU audio plumbing and Aurora interface sounds
+- VirtIO Sound/ALSA QEMU audio with Aurora click and startup sounds
 
 ## Real Firefox
 
@@ -39,6 +40,24 @@ AuroraOS bundles Alpine's native VSCodium package. It is not Lite XL, Lapce, a s
 ![VSCodium running inside AuroraOS 98](docs/screenshots/vscodium.png)
 
 Press `F8` inside the VM to launch VSCodium. Press `F9` to open Aurora Settings.
+
+## ARM64 Debian applications
+
+The fast ARM64 image includes a real Debian 13 ARM64 userspace alongside the
+Alpine desktop. Double-click an ARM64 `.deb` in Aurora Explorer to validate its
+architecture, resolve dependencies with `apt`, install it, and generate Aurora
+application and desktop launchers. Recommended-only dependencies are omitted to
+keep live installs within the VM's memory-backed filesystem.
+
+![ARM64 Debian package installation](docs/screenshots/arm64-deb-install.png)
+
+This test installed and launched Debian's real ARM64 Mousepad package:
+
+![Debian ARM64 Mousepad running in AuroraOS](docs/screenshots/arm64-deb-app.png)
+
+The current QEMU image is a live preview. Packages installed after boot are lost
+when the VM shuts down; persistent installation remains planned for the disk-image
+edition.
 
 ## Aurora Settings
 
@@ -77,10 +96,21 @@ make run-fast-qemu
 You can also double-click `run-aurora-qemu.command` in Finder. It automatically
 selects the fast ARM64 VM on Apple Silicon and the x86-64 VM on Intel hosts.
 
+To install a launcher only for the current macOS user (no `sudo`, no changes to
+other accounts), run:
+
+```sh
+make install-macos-user
+open "$HOME/Applications/AuroraOS 98.app"
+```
+
+Remove that per-user launcher with `make uninstall-macos-user`. The launcher
+references this checkout, so keep the project folder in place.
+
 For a clean ARM64 build, run these once:
 
 ```sh
-brew install qemu lz4 libarchive
+brew install qemu lz4 libarchive e2fsprogs xz
 make firefox-qemu-arm64
 make run-fast-qemu
 ```
@@ -99,7 +129,30 @@ make run-firefox-qemu
 ```
 
 The x86-64 image is also the appropriate preview for testing Wine and x86 Windows
-executables. Wine in the ARM64 preview does not provide x86 CPU translation.
+executables. The ARM64 image accepts Windows ARM64 PE files on a best-effort basis;
+it does not translate x86/x64 Windows applications. Wine compatibility varies by
+application and is not equivalent to Windows.
+
+The fast ARM64 preview uses an Alpine desktop plus an embedded Debian 13/glibc
+runtime. Aurora rejects `amd64`, `i386`, and other mismatched Debian packages
+instead of forcing broken installations. Packages still need ARM64 builds and
+dependencies available from Debian 13 repositories.
+
+### Download compatibility
+
+| Format | Current behavior |
+| --- | --- |
+| ARM64 Alpine `.apk` | Installs with Alpine's native package manager |
+| Android `.apk` | Detected separately; installs only when the optional Waydroid runtime is present |
+| Windows ARM64 `.exe` / `.msi` | Best-effort Wine ARM64 launch with architecture validation and optional desktop shortcut |
+| x86 / x64 `.exe` | Use the x86-64 Aurora image; the ARM preview does not emulate x86 Windows applications |
+| `.dmg` | Extracts files with 7-Zip into Downloads; macOS `.app` programs do not run on Linux |
+| ARM64 AppImage | Runs directly or with the AppImage extract-and-run fallback |
+| ARM64 `.deb` | Installs in the embedded Debian 13/glibc runtime; dependencies are resolved with `apt` and launchers are generated |
+
+Android, Windows, Linux, and macOS all use different application ABIs. Matching
+`arm64` CPU architecture is necessary, but it does not make packages from those
+operating systems interchangeable.
 
 ### Debian 13
 
@@ -132,13 +185,13 @@ back to slower software emulation when KVM is unavailable.
 - Python 3
 - QEMU (ARM64 and/or x86-64 system emulator)
 - `cpio`, `lz4`, `bsdtar`, and `make`
-- at least 8 GB of free disk space for a clean build
-- at least 6 GB of RAM assigned to the VM
+- at least 10 GB of free disk space for a clean ARM64 build
+- 12 GB of RAM assigned to the ARM64 VM for live package installation
 
 On macOS with Homebrew:
 
 ```sh
-brew install qemu lz4 libarchive
+brew install qemu lz4 libarchive e2fsprogs xz
 ```
 
 The first clean build downloads the Alpine package set. Generated images are written to:

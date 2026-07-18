@@ -21,7 +21,7 @@ ICON_MAP = {
     "floppy": "w2k_floppy_drive_3½.ico",
     "cdrom": "w2k_cd-rom_drive.ico",
     "recycle": "w2k_recycle_bin_empty.ico",
-    "terminal": "w2k_ms-dos_application.ico",
+    "terminal": "w98_console_prompt.ico",
     "text-editor": "w2k_notepad_1.ico",
     "graphics": "w2k_paint.ico",
     "audio": "w2k_sndvol_1.ico",
@@ -32,6 +32,11 @@ ICON_MAP = {
     "run": "w2k_run.ico",
     "package": "w2k_default_application.ico",
     "pi-tools": "w2k_system.ico",
+    "download": "wxp_downloadfolder.ico",
+    "archive": "w2k_zip_file.ico",
+    "executable": "w98_executable.ico",
+    "installer": "w98_installer.ico",
+    "generic-file": "w2k_default_document.ico",
 }
 
 
@@ -44,7 +49,7 @@ def load_ico(path: Path) -> Image.Image:
 
 
 def save_sizes(name: str, img: Image.Image) -> None:
-    for size in (16, 32, 48):
+    for size in (16, 32, 48, 72, 128):
         resized = img.resize((size, size), Image.Resampling.NEAREST)
         resized.save(OUT / f"{name}-{size}.png")
     img.resize((128, 128), Image.Resampling.NEAREST).save(OUT / f"{name}.png")

@@ -12,7 +12,7 @@ disk	w2k_hard_drive.ico	system/disk.png
 floppy	w2k_floppy_drive_3½.ico	system/floppy.png
 cdrom	w2k_cd-rom_drive.ico	system/cdrom.png
 recycle	w2k_recycle_bin_empty.ico	system/recycle.png
-terminal	w2k_ms-dos_application.ico	system/terminal.png
+terminal	w98_console_prompt.ico	system/terminal.png
 text-editor	w2k_notepad_1.ico	system/text-editor.png
 graphics	w2k_paint.ico	system/graphics.png
 audio	w2k_sndvol_1.ico	system/audio.png
@@ -23,3 +23,8 @@ taskbar	w2k_taskbar.ico	system/taskbar.png
 run	w2k_run.ico	system/run.png
 package	w2k_default_application.ico	system/package.png
 pi-tools	w2k_system.ico	system/pi-tools.png
+download	wxp_downloadfolder.ico	system/download.png
+archive	w2k_zip_file.ico	system/archive.png
+executable	w98_executable.ico	system/executable.png
+installer	w98_installer.ico	system/installer.png
+generic-file	w2k_default_document.ico	system/generic-file.png
